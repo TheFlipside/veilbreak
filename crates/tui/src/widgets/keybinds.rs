@@ -1,0 +1,40 @@
+//! Context-sensitive keybind hint bar at the bottom of the dashboard.
+
+use ratatui::prelude::*;
+use ratatui::text::{Line, Span};
+
+use crate::app::{DashboardState, FocusPane};
+use crate::theme;
+
+pub fn draw(frame: &mut Frame, area: Rect, dash: &DashboardState) {
+    let hints: &[(&str, &str)] = match dash.focus {
+        FocusPane::ApList => &[
+            ("Tab", "focus"),
+            ("\u{2191}\u{2193}/jk", "nav"),
+            ("Enter", "select"),
+            ("d", "deauth"),
+            ("s", "sort"),
+            ("q", "quit"),
+        ],
+        FocusPane::Detail => &[("Tab", "focus"), ("d", "deauth"), ("q", "quit")],
+        FocusPane::EventLog => &[
+            ("Tab", "focus"),
+            ("\u{2191}\u{2193}/jk", "scroll"),
+            ("q", "quit"),
+        ],
+    };
+
+    let spans: Vec<Span> = hints
+        .iter()
+        .flat_map(|(key, desc)| {
+            [
+                Span::raw(" ["),
+                Span::styled(*key, theme::KEYBIND_KEY),
+                Span::raw("] "),
+                Span::styled(*desc, theme::KEYBIND_DESC),
+            ]
+        })
+        .collect();
+
+    frame.render_widget(Line::from(spans), area);
+}

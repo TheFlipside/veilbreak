@@ -1,0 +1,34 @@
+Wiphy phy0
+	wiphy index: 0
+	max # scan SSIDs: 4
+	max scan IEs length: 2285 bytes
+	max # sched scan SSIDs: 0
+	Retry short limit: 7
+	Retry long limit: 4
+	Coverage class: 0 (up to 0m)
+	Supported interface modes:
+		 * IBSS
+		 * managed
+		 * AP
+		 * AP/VLAN
+		 * monitor
+		 * mesh point
+	Band 1:
+		Capabilities: 0x1862
+		Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+	software interface modes (can always be added):
+		 * AP/VLAN
+		 * monitor
+
+Wiphy phy1
+	wiphy index: 1
+	max # scan SSIDs: 4
+	max scan IEs length: 2285 bytes
+	Retry short limit: 7
+	Retry long limit: 4
+	Coverage class: 0 (up to 0m)
+	Supported interface modes:
+		 * IBSS
+		 * managed
+	Band 1:
+		Capabilities: 0x0

@@ -1,0 +1,20 @@
+phy#0
+	Interface wlan0
+		ifindex 3
+		wdev 0x1
+		addr aa:bb:cc:00:11:20
+		ssid FIXTURE-SSID-001
+		type managed
+		channel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz
+		txpower 20.00 dBm
+		multicast TXQ:
+			qsz-byt	qsz-pkt	flows	drops	marks	overlmt	hashcol	tx-bytes	tx-packets
+			0	0	0	0	0	0	0	0	0
+
+phy#1
+	Interface wlan1
+		ifindex 4
+		wdev 0x100000001
+		addr aa:bb:cc:00:11:21
+		type managed
+		txpower 23.00 dBm
