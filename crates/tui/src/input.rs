@@ -6,6 +6,7 @@ use veilbreak_core::AppState;
 use crate::app::{DashboardState, FocusPane, Screen, SetupScreen};
 
 /// What the app loop should do after processing a key.
+#[must_use]
 pub enum Outcome {
     /// Keep running.
     Continue,
@@ -77,6 +78,8 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
 }
 
 fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCode) -> Outcome {
+    let ap_count = state.access_points.len();
+
     match key {
         KeyCode::Char('q') => Outcome::Quit,
         KeyCode::Tab => {
@@ -88,15 +91,27 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            if dash.focus == FocusPane::ApList {
-                dash.selected_ap = dash.selected_ap.saturating_sub(1);
+            match dash.focus {
+                FocusPane::ApList => {
+                    dash.selected_ap = dash.selected_ap.saturating_sub(1);
+                }
+                FocusPane::EventLog => {
+                    dash.event_scroll = dash.event_scroll.saturating_sub(1);
+                }
+                FocusPane::Detail => {}
             }
             Outcome::Continue
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            if dash.focus == FocusPane::ApList {
-                let max = state.access_points.len().saturating_sub(1);
-                dash.selected_ap = dash.selected_ap.saturating_add(1).min(max);
+            match dash.focus {
+                FocusPane::ApList => {
+                    let max = ap_count.saturating_sub(1);
+                    dash.selected_ap = dash.selected_ap.saturating_add(1).min(max);
+                }
+                FocusPane::EventLog => {
+                    dash.event_scroll = dash.event_scroll.saturating_add(1);
+                }
+                FocusPane::Detail => {}
             }
             Outcome::Continue
         }
@@ -108,7 +123,13 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
         }
         KeyCode::Char('G') => {
             if dash.focus == FocusPane::ApList {
-                dash.selected_ap = state.access_points.len().saturating_sub(1);
+                dash.selected_ap = ap_count.saturating_sub(1);
+            }
+            Outcome::Continue
+        }
+        KeyCode::Char('s') => {
+            if dash.focus == FocusPane::ApList {
+                dash.sort = dash.sort.next();
             }
             Outcome::Continue
         }

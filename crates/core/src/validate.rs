@@ -33,6 +33,46 @@ pub fn is_valid_interface_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// Maximum length in bytes for an ESSID (IEEE 802.11 limit).
+pub const MAX_ESSID_LEN: usize = 32;
+
+/// Strips characters unsafe for terminal display from a string.
+///
+/// Removes ASCII control characters (0x00–0x1F, 0x7F), C1 control codes
+/// (U+0080–U+009F), Unicode bidirectional overrides, and other invisible
+/// formatting codepoints that could mislead the TUI operator.
+#[must_use]
+pub fn sanitize_display_string(s: &str) -> String {
+    s.chars()
+        .filter(|&c| !c.is_ascii_control() && !is_unsafe_unicode(c))
+        .collect()
+}
+
+const fn is_unsafe_unicode(c: char) -> bool {
+    matches!(c as u32,
+        0x007F          // DEL
+        | 0x0080..=0x009F // C1 control codes
+        | 0x00AD        // soft hyphen
+        | 0x200B..=0x200F // zero-width and Bidi marks
+        | 0x2028..=0x202E // line/paragraph separators + Bidi overrides
+        | 0x2066..=0x2069 // Bidi isolates
+    )
+}
+
+/// Truncates a string to `max_bytes`, ensuring the cut falls on a UTF-8
+/// character boundary.
+#[must_use]
+pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +130,54 @@ mod tests {
         assert!(!is_valid_interface_name("iface name"));
         assert!(!is_valid_interface_name("iface;rm"));
         assert!(!is_valid_interface_name("wlan$0"));
+    }
+
+    #[test]
+    fn sanitize_strips_control_chars() {
+        assert_eq!(
+            sanitize_display_string("hello\x1b[31mworld"),
+            "hello[31mworld"
+        );
+        assert_eq!(sanitize_display_string("clean"), "clean");
+        assert_eq!(sanitize_display_string("\x00\x07\x1b"), "");
+        assert_eq!(sanitize_display_string("tab\there"), "tabhere");
+    }
+
+    #[test]
+    fn sanitize_strips_del_and_c1() {
+        assert_eq!(sanitize_display_string("a\x7Fb"), "ab");
+        assert_eq!(sanitize_display_string("a\u{0080}b"), "ab");
+        assert_eq!(sanitize_display_string("a\u{009F}b"), "ab");
+    }
+
+    #[test]
+    fn sanitize_strips_bidi_overrides() {
+        assert_eq!(sanitize_display_string("a\u{202A}b\u{202C}c"), "abc");
+        assert_eq!(sanitize_display_string("a\u{2066}b\u{2069}c"), "abc");
+        assert_eq!(sanitize_display_string("a\u{200F}b"), "ab");
+    }
+
+    #[test]
+    fn sanitize_preserves_unicode() {
+        assert_eq!(sanitize_display_string("café ☕"), "café ☕");
+    }
+
+    #[test]
+    fn truncate_within_limit() {
+        assert_eq!(truncate_utf8("short", 32), "short");
+    }
+
+    #[test]
+    fn truncate_at_limit() {
+        let long = "a]".repeat(20);
+        let result = truncate_utf8(&long, 32);
+        assert!(result.len() <= 32);
+    }
+
+    #[test]
+    fn truncate_respects_char_boundary() {
+        let s = "aé";
+        let result = truncate_utf8(s, 2);
+        assert_eq!(result, "a");
     }
 }

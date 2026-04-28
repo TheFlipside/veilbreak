@@ -60,6 +60,10 @@ pub enum AirodumpError {
     /// Failed to spawn airodump-ng.
     #[error("failed to spawn airodump-ng: {0}")]
     Spawn(#[source] std::io::Error),
+
+    /// Failed to read or parse the CSV output file.
+    #[error("failed to parse airodump CSV: {0}")]
+    CsvParse(String),
 }
 
 /// Errors from tshark operations.

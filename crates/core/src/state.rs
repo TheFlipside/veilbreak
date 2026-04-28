@@ -3,8 +3,15 @@
 //! [`AppState`] is the single source of truth for everything the dashboard
 //! displays. It is owned and mutated exclusively by the app event loop.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
+
+use crate::event::AppEvent;
+use crate::validate;
+
+const MAX_EVENT_LOG: usize = 10_000;
+const MAX_ACCESS_POINTS: usize = 4_096;
+const MAX_CLIENTS_PER_AP: usize = 256;
 
 /// Central application state, mutated only by the event loop.
 #[derive(Debug)]
@@ -16,7 +23,7 @@ pub struct AppState {
     /// Current capture file size in bytes.
     pub capture_size: u64,
     /// Event log entries (newest last).
-    pub event_log: Vec<EventLogEntry>,
+    pub event_log: VecDeque<EventLogEntry>,
 }
 
 impl AppState {
@@ -27,7 +34,7 @@ impl AppState {
             access_points: HashMap::new(),
             started_at: Instant::now(),
             capture_size: 0,
-            event_log: Vec::new(),
+            event_log: VecDeque::new(),
         }
     }
 
@@ -35,6 +42,112 @@ impl AppState {
     #[must_use]
     pub fn elapsed_secs(&self) -> u64 {
         self.started_at.elapsed().as_secs()
+    }
+
+    /// Applies an event to the state, updating AP/client tables and event log.
+    pub fn apply_event(&mut self, event: &AppEvent) {
+        match event {
+            AppEvent::ApDiscovered(ap) => {
+                if !validate::is_valid_bssid(&ap.bssid) {
+                    return;
+                }
+                if self.access_points.len() < MAX_ACCESS_POINTS {
+                    let mut sanitized = ap.clone();
+                    sanitized.encryption = validate::sanitize_display_string(&sanitized.encryption);
+                    sanitized.ssid = sanitized.ssid.map(|s| {
+                        validate::sanitize_display_string(validate::truncate_utf8(
+                            &s,
+                            validate::MAX_ESSID_LEN,
+                        ))
+                    });
+                    self.access_points
+                        .entry(sanitized.bssid.clone())
+                        .or_insert(sanitized);
+                }
+            }
+            AppEvent::ApUpdated(ap) => {
+                if let Some(entry) = self.access_points.get_mut(&ap.bssid) {
+                    entry.power = ap.power;
+                    entry.channel = ap.channel;
+                    entry.beacon_count = ap.beacon_count;
+                    entry.encryption = validate::sanitize_display_string(&ap.encryption);
+                    if let Some(ssid) = &ap.ssid {
+                        entry.ssid = Some(validate::sanitize_display_string(
+                            validate::truncate_utf8(ssid, validate::MAX_ESSID_LEN),
+                        ));
+                        entry.hidden = false;
+                    }
+                }
+            }
+            AppEvent::ClientSeen(client) => {
+                if !validate::is_valid_bssid(&client.mac)
+                    || !validate::is_valid_bssid(&client.bssid)
+                {
+                    return;
+                }
+                if let Some(ap) = self.access_points.get_mut(&client.bssid)
+                    && (ap.clients.len() < MAX_CLIENTS_PER_AP
+                        || ap.clients.contains_key(&client.mac))
+                {
+                    ap.clients
+                        .entry(client.mac.clone())
+                        .and_modify(|c| c.power = client.power)
+                        .or_insert_with(|| client.clone());
+                }
+            }
+            AppEvent::SsidRevealed { bssid, ssid, .. } => {
+                if !validate::is_valid_bssid(bssid) {
+                    return;
+                }
+                if let Some(ap) = self.access_points.get_mut(bssid) {
+                    let sanitized = validate::sanitize_display_string(validate::truncate_utf8(
+                        ssid,
+                        validate::MAX_ESSID_LEN,
+                    ));
+                    ap.ssid = Some(sanitized);
+                    ap.hidden = false;
+                }
+            }
+            AppEvent::CaptureSize(size) => {
+                self.capture_size = *size;
+            }
+            AppEvent::DeauthComplete { .. } | AppEvent::Error(_) => {}
+        }
+    }
+
+    /// Pushes an entry to the event log, evicting the oldest entry when full.
+    pub fn log_event(&mut self, message: impl Into<String>) {
+        if self.event_log.len() >= MAX_EVENT_LOG {
+            self.event_log.pop_front();
+        }
+        self.event_log.push_back(EventLogEntry {
+            elapsed_secs: self.elapsed_secs(),
+            message: validate::sanitize_display_string(&message.into()),
+        });
+    }
+
+    /// Returns access points sorted by the given column, as `(bssid, &AP)` pairs.
+    #[must_use]
+    pub fn sorted_aps(&self, sort: SortColumn) -> Vec<(&str, &AccessPoint)> {
+        let mut aps: Vec<_> = self
+            .access_points
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+
+        match sort {
+            SortColumn::Bssid => aps.sort_by(|a, b| a.0.cmp(b.0)),
+            SortColumn::Channel => aps.sort_by_key(|&(_, ap)| ap.channel),
+            SortColumn::Power => aps.sort_by_key(|&(_, ap)| std::cmp::Reverse(ap.power)),
+            SortColumn::Clients => {
+                aps.sort_by_key(|&(_, ap)| std::cmp::Reverse(ap.clients.len()));
+            }
+            SortColumn::Beacons => {
+                aps.sort_by_key(|&(_, ap)| std::cmp::Reverse(ap.beacon_count));
+            }
+        }
+
+        aps
     }
 }
 
@@ -57,8 +170,8 @@ pub struct AccessPoint {
     pub power: i32,
     /// Encryption type (e.g. `"WPA2"`, `"WPA3"`, `"OPN"`).
     pub encryption: String,
-    /// Associated clients.
-    pub clients: Vec<Client>,
+    /// Associated clients, keyed by MAC address.
+    pub clients: HashMap<String, Client>,
     /// Total beacon frames observed.
     pub beacon_count: u64,
     /// Whether the AP advertises a hidden SSID.
@@ -83,4 +196,46 @@ pub struct EventLogEntry {
     pub elapsed_secs: u64,
     /// Human-readable event description.
     pub message: String,
+}
+
+/// Column used to sort the AP list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortColumn {
+    /// Sort by BSSID lexicographically.
+    Bssid,
+    /// Sort by channel number.
+    Channel,
+    /// Sort by signal strength (strongest first).
+    #[default]
+    Power,
+    /// Sort by number of associated clients (most first).
+    Clients,
+    /// Sort by beacon count (most first).
+    Beacons,
+}
+
+impl SortColumn {
+    /// Cycle to the next sort column.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Power => Self::Channel,
+            Self::Channel => Self::Clients,
+            Self::Clients => Self::Beacons,
+            Self::Beacons => Self::Bssid,
+            Self::Bssid => Self::Power,
+        }
+    }
+}
+
+impl std::fmt::Display for SortColumn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bssid => f.write_str("BSSID"),
+            Self::Channel => f.write_str("CH"),
+            Self::Power => f.write_str("PWR"),
+            Self::Clients => f.write_str("CLI"),
+            Self::Beacons => f.write_str("BCN"),
+        }
+    }
 }

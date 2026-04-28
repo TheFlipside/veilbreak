@@ -15,4 +15,4 @@ pub mod validate;
 
 pub use error::Error;
 pub use event::AppEvent;
-pub use state::AppState;
+pub use state::{AppState, SortColumn};

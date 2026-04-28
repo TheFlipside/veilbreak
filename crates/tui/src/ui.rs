@@ -26,13 +26,14 @@ fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &
     ])
     .split(area);
 
-    widgets::header::draw(frame, vertical[0], state);
+    widgets::header::draw(frame, vertical[0], state, dash);
 
     let body = Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(vertical[1]);
 
-    widgets::ap_list::draw(frame, body[0], state, dash);
-    widgets::detail::draw(frame, body[1], state, dash);
+    let sorted = state.sorted_aps(dash.sort);
+    widgets::ap_list::draw(frame, body[0], &sorted, dash);
+    widgets::detail::draw(frame, body[1], &sorted, dash);
     widgets::events::draw(frame, vertical[2], state, dash);
     widgets::keybinds::draw(frame, vertical[3], dash);
 }

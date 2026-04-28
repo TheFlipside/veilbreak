@@ -31,7 +31,7 @@ impl InterfaceMode {
             "managed" => Self::Managed,
             "monitor" => Self::Monitor,
             "AP" => Self::Ap,
-            other => Self::Other(other.to_owned()),
+            other => Self::Other(validate::sanitize_display_string(other)),
         }
     }
 }
@@ -135,6 +135,7 @@ async fn run_iw(args: &[&str]) -> Result<String, InterfaceError> {
     if !output.status.success() {
         let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         stderr.truncate(512);
+        let stderr = validate::sanitize_display_string(&stderr);
         return Err(InterfaceError::IwFailed {
             // None when killed by signal; -1 is the conventional sentinel.
             status: output.status.code().unwrap_or(-1),
