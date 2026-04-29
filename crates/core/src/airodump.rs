@@ -302,8 +302,16 @@ impl AirodumpController {
         }
 
         let prefix = canonical_dir.join("veilbreak");
+        clean_stale_outputs(&canonical_dir);
 
-        let child = Command::new("airodump-ng")
+        tracing::debug!(
+            "spawning: airodump-ng -w {} --output-format pcap,csv --band {} {}",
+            prefix.display(),
+            band.as_arg(),
+            interface,
+        );
+
+        let mut child = Command::new("airodump-ng")
             .arg("-w")
             .arg(&prefix)
             .arg("--output-format")
@@ -313,7 +321,7 @@ impl AirodumpController {
             .arg(interface)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(AirodumpError::Spawn)?;
 
@@ -323,10 +331,14 @@ impl AirodumpController {
             ))
         })?;
 
+        let stderr = child.stderr.take();
         let child = Arc::new(Mutex::new(child));
 
         let child_waiter = Arc::clone(&child);
         let join_handle = tokio::spawn(async move {
+            if let Some(stderr) = stderr {
+                drain_stderr(stderr).await;
+            }
             let _ = child_waiter.lock().await.wait().await;
         });
 
@@ -375,6 +387,37 @@ impl Drop for AirodumpController {
         }
         self.csv_handle.abort();
         self.join_handle.abort();
+    }
+}
+
+/// Removes stale `veilbreak-NN.csv` / `.cap` files from a previous session so
+/// that airodump-ng starts its counter at `-01` and our hardcoded path matches.
+fn clean_stale_outputs(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
+        let ext_matches = Path::new(name_str)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("csv") || ext.eq_ignore_ascii_case("cap"));
+        if name_str.starts_with("veilbreak-")
+            && ext_matches
+            && let Err(e) = std::fs::remove_file(entry.path())
+        {
+            tracing::warn!("failed to remove stale output {name_str}: {e}");
+        }
+    }
+}
+
+async fn drain_stderr(stderr: tokio::process::ChildStderr) {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let mut lines = BufReader::new(stderr).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        tracing::debug!(target: "airodump_stderr", "{line}");
     }
 }
 
