@@ -6,6 +6,17 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `core::tshark` module: periodic tshark poll against airodump pcap, EK-JSON parser, `TsharkController` with 3-second poll loop and `HashSet`-based dedup
+- `parse_ek_json_line()` pure parser: extracts BSSID/SSID from probe responses (`0x05`), association requests (`0x00`), reassociation requests (`0x02`), and beacon leaks (`0x08`)
+- `build_display_filter()`: constructs combined tshark display filter with BSSID validation (defense-in-depth)
+- `RevealPacket` type with BSSID case normalization (tshark lowercase → uppercase to match airodump CSV)
+- `TsharkError::Failed` and `TsharkError::Parse` error variants
+- `AirodumpController::pcap_path()` accessor for the capture file path (`<prefix>-01.cap`)
+- Interface name propagated from setup flow into `DashboardState` on `ModeConfirm` → `Dashboard` transition
+- `AirodumpController` + `TsharkController` spawned on dashboard entry; hidden BSSIDs fed to tshark after each state-changing event batch
+- Session output directory with randomized suffix and `0o700` permissions (`/tmp/veilbreak-<pid>-<hex>`)
+- Test fixture `tests/fixtures/tshark_ek.jsonl` with 9 NDJSON lines covering all frame subtypes, edge cases (empty SSID, invalid BSSID, unknown subtype, control char sanitization)
+- 14 unit tests for EK-JSON parsing, filter building, and fixture coverage in `core::tshark`
 - LGPL-3.0 license file
 - `core::airodump` module: spawns `airodump-ng`, parses live CSV, diffs AP/client state, emits events via `mpsc` channel
 - `CsvSnapshot`, `AirodumpController` types for subprocess lifecycle management
@@ -39,6 +50,12 @@ All notable changes to this project are documented in this file.
 
 ### Security
 
+- **Tshark filter injection prevented**: `build_display_filter()` validates every BSSID via `is_valid_bssid()` before interpolation into the display filter expression
+- **Tshark output bounded**: `run_tshark()` rejects stdout exceeding 10 MiB to prevent memory exhaustion from large pcaps or broadened filters
+- **TOCTOU race on pcap path eliminated**: removed `pcap_path.exists()` pre-check; tshark failure is handled gracefully by the poll loop
+- **Event channel disconnection detected**: `TryRecvError::Disconnected` now returns an error instead of silently breaking the drain loop
+- **Session spawn bounded**: controller spawn attempted exactly once per session to prevent infinite retry on transient failure
+- **Output directory hardened**: randomized suffix prevents PID prediction attacks; `0o700` mode prevents local information disclosure of pcap data
 - **PID reuse race eliminated**: `AirodumpController` holds `Arc<Mutex<Child>>` instead of raw `libc::pid_t`; `blocking_lock()` guarantees process termination in `Drop`
 - **Terminal escape injection mitigated**: all untrusted strings (SSIDs, encryption, error messages, iw stderr, interface modes) sanitized via `sanitize_display_string()` at ingestion, state mutation, and log sink layers
 - **ESSID overflow prevented**: SSIDs truncated to 32 bytes at parse time and re-validated on every state write path
@@ -50,6 +67,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
+- Tshark poll loop uses owned `Vec<String>` for unrevealed BSSIDs to release lock before subprocess call
 - CI actions pinned to commit SHAs instead of mutable tags
 - `AccessPoint::clients` changed from `Vec<Client>` to `HashMap<String, Client>` for O(1) lookup
 - `AppState::event_log` changed from `Vec` to `VecDeque` for O(1) eviction

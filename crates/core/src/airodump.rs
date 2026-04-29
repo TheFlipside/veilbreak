@@ -191,6 +191,7 @@ pub struct AirodumpController {
     child: Arc<Mutex<tokio::process::Child>>,
     join_handle: JoinHandle<()>,
     csv_handle: JoinHandle<()>,
+    pcap_path: PathBuf,
 }
 
 impl AirodumpController {
@@ -240,7 +241,14 @@ impl AirodumpController {
             let _ = child_waiter.lock().await.wait().await;
         });
 
-        let mut csv_name = prefix.file_name().unwrap_or_default().to_os_string();
+        let file_stem = prefix.file_name().unwrap_or_default().to_os_string();
+
+        let mut pcap_name = file_stem.clone();
+        pcap_name.push("-01.cap");
+        let mut pcap_path = prefix.clone();
+        pcap_path.set_file_name(pcap_name);
+
+        let mut csv_name = file_stem;
         csv_name.push("-01.csv");
         let mut csv_path = prefix;
         csv_path.set_file_name(csv_name);
@@ -251,7 +259,14 @@ impl AirodumpController {
             child,
             join_handle,
             csv_handle,
+            pcap_path,
         })
+    }
+
+    /// Path to the pcap capture file produced by airodump-ng.
+    #[must_use]
+    pub fn pcap_path(&self) -> &Path {
+        &self.pcap_path
     }
 
     /// Stops the airodump-ng subprocess and CSV watcher.

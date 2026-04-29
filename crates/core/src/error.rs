@@ -72,6 +72,19 @@ pub enum TsharkError {
     /// Failed to spawn tshark.
     #[error("failed to spawn tshark: {0}")]
     Spawn(#[source] std::io::Error),
+
+    /// Tshark exited with a non-zero status.
+    #[error("tshark exited with status {status}: {stderr}")]
+    Failed {
+        /// Process exit code.
+        status: i32,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// Failed to parse tshark output.
+    #[error("failed to parse tshark output: {0}")]
+    Parse(String),
 }
 
 /// Errors from aireplay-ng operations.

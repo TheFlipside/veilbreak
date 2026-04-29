@@ -1,0 +1,9 @@
+{"index":{"_index":"packets-2025-01-15","_type":"doc"}}
+{"timestamp":"1737000000000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000005"],"wlan_wlan_bssid":["77:88:99:aa:bb:cc"],"wlan_wlan_ssid":["HiddenNet-01"]}}}
+{"timestamp":"1737000001000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000000"],"wlan_wlan_bssid":["de:ad:be:ef:00:01"],"wlan_wlan_ssid":["SecretLab"]}}}
+{"timestamp":"1737000002000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000002"],"wlan_wlan_bssid":["de:ad:be:ef:00:01"],"wlan_wlan_ssid":["SecretLab"]}}}
+{"timestamp":"1737000003000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000008"],"wlan_wlan_bssid":["ab:cd:ef:01:23:45"],"wlan_wlan_ssid":["LeakedBeacon"]}}}
+{"timestamp":"1737000004000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000005"],"wlan_wlan_bssid":["77:88:99:aa:bb:cc"],"wlan_wlan_ssid":[""]}}}
+{"timestamp":"1737000005000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000005"],"wlan_wlan_bssid":["INVALID"],"wlan_wlan_ssid":["BadBssid"]}}}
+{"timestamp":"1737000006000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000004"],"wlan_wlan_bssid":["77:88:99:aa:bb:cc"],"wlan_wlan_ssid":["UnknownType"]}}}
+{"timestamp":"1737000007000","layers":{"frame":{},"wlan":{"wlan_wlan_fc_type_subtype":["0x00000005"],"wlan_wlan_bssid":["cc:dd:ee:ff:00:11"],"wlan_wlan_ssid":["Evil\u001b[31mNet"]}}}

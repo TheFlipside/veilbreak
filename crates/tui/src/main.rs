@@ -1,5 +1,5 @@
-use std::io;
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::{self, Read as _};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::sync::Mutex;
 
 use anyhow::Result;
@@ -24,6 +24,17 @@ struct Cli {
     /// Replay a captured pcap instead of live capture.
     #[arg(long, value_name = "PCAP")]
     replay: Option<String>,
+}
+
+fn random_hex() -> Result<String> {
+    use std::fmt::Write;
+    let mut buf = [0u8; 8];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
+    let mut hex = String::with_capacity(16);
+    for b in buf {
+        let _ = write!(hex, "{b:02x}");
+    }
+    Ok(hex)
 }
 
 fn restore_terminal() {
@@ -53,12 +64,19 @@ fn init_logging() -> Result<()> {
 }
 
 async fn run_tui(replay: Option<String>) -> Result<()> {
+    let output_dir = std::env::temp_dir().join(format!(
+        "veilbreak-{}-{}",
+        std::process::id(),
+        random_hex()?
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&output_dir)?;
+
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = app::run(&mut terminal, replay).await;
+    let result = app::run(&mut terminal, replay, &output_dir).await;
 
     let _ = terminal.show_cursor();
     result

@@ -1,12 +1,15 @@
 //! Main application loop and screen state management.
 
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::prelude::*;
 use tokio::sync::mpsc;
+use veilbreak_core::airodump::AirodumpController;
 use veilbreak_core::interface::WirelessInterface;
+use veilbreak_core::tshark::TsharkController;
 use veilbreak_core::{AppEvent, AppState, SortColumn};
 
 use crate::input;
@@ -97,10 +100,16 @@ impl FocusPane {
 pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     replay: Option<String>,
+    output_dir: &Path,
 ) -> Result<()> {
     let mut state = AppState::default();
     // Channel capacity sized for burst headroom during rapid CSV re-parses.
-    let (_tx, mut rx) = mpsc::channel::<AppEvent>(256);
+    let (tx, mut rx) = mpsc::channel::<AppEvent>(256);
+
+    #[allow(clippy::collection_is_never_read)] // held for Drop semantics
+    let mut _airodump_ctrl: Option<AirodumpController> = None;
+    let mut tshark_ctrl: Option<TsharkController> = None;
+    let mut session_spawn_attempted = false;
 
     let mut screen = if replay.is_some() {
         Screen::Dashboard(DashboardState::default())
@@ -118,9 +127,6 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
         }
     };
 
-    // _tx is held to keep the channel open. Producer tasks (airodump
-    // controller etc.) will clone it once wired in Phase 3+.
-
     loop {
         terminal.draw(|frame| ui::draw(frame, &screen, &state))?;
 
@@ -128,16 +134,33 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
             Some(event) = rx.recv() => {
                 state.apply_event(&event);
                 apply_event_to_log(&mut state, &event);
+                let mut hidden_set_changed = changes_hidden_set(&event);
                 // Drain up to a bounded number of queued events per frame
                 // to prevent starving the terminal input arm.
                 for _ in 0..64 {
                     match rx.try_recv() {
                         Ok(ev) => {
+                            hidden_set_changed |= changes_hidden_set(&ev);
                             state.apply_event(&ev);
                             apply_event_to_log(&mut state, &ev);
                         }
-                        Err(_) => break,
+                        Err(mpsc::error::TryRecvError::Empty) => break,
+                        Err(mpsc::error::TryRecvError::Disconnected) => {
+                            tracing::error!("event channel closed unexpectedly");
+                            return Err(anyhow::anyhow!("event channel closed"));
+                        }
                     }
+                }
+                if hidden_set_changed
+                    && let Some(tc) = &tshark_ctrl
+                {
+                    let hidden: Vec<String> = state
+                        .access_points
+                        .iter()
+                        .filter(|(_, ap)| ap.hidden)
+                        .map(|(bssid, _)| bssid.clone())
+                        .collect();
+                    tc.set_hidden_bssids(hidden).await;
                 }
             }
             result = poll_terminal_event() => {
@@ -156,6 +179,23 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                         }
                     }
                 }
+                if !session_spawn_attempted
+                    && let Screen::Dashboard(dash) = &screen
+                    && let Some(iface_name) = &dash.interface_name
+                {
+                    session_spawn_attempted = true;
+                    match spawn_session(iface_name, output_dir, tx.clone()) {
+                        Ok((ac, tc)) => {
+                            state.log_event(format!("started capture on {iface_name}"));
+                            _airodump_ctrl = Some(ac);
+                            tshark_ctrl = Some(tc);
+                        }
+                        Err(e) => {
+                            tracing::error!("failed to start capture session: {e}");
+                            state.log_event(format!("error: {e}"));
+                        }
+                    }
+                }
             }
         }
     }
@@ -168,6 +208,24 @@ async fn poll_terminal_event() -> Result<()> {
             return Ok(());
         }
     }
+}
+
+fn spawn_session(
+    interface: &str,
+    output_dir: &Path,
+    tx: mpsc::Sender<AppEvent>,
+) -> Result<(AirodumpController, TsharkController)> {
+    let airodump = AirodumpController::spawn(interface, output_dir, tx.clone())?;
+    let pcap = airodump.pcap_path().to_owned();
+    let tshark = TsharkController::spawn(pcap, tx);
+    Ok((airodump, tshark))
+}
+
+const fn changes_hidden_set(event: &AppEvent) -> bool {
+    matches!(
+        event,
+        AppEvent::ApDiscovered(_) | AppEvent::SsidRevealed { .. }
+    )
 }
 
 fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {

@@ -67,9 +67,13 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
             }
             _ => SetupOutcome::Continue,
         },
-        SetupScreen::ModeConfirm { .. } => match key {
+        SetupScreen::ModeConfirm { interface, .. } => match key {
             KeyCode::Enter => {
-                SetupOutcome::Transition(Screen::Dashboard(DashboardState::default()))
+                let dash = DashboardState {
+                    interface_name: Some(interface.name.clone()),
+                    ..DashboardState::default()
+                };
+                SetupOutcome::Transition(Screen::Dashboard(dash))
             }
             KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
             _ => SetupOutcome::Continue,
