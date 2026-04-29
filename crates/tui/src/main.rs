@@ -1,5 +1,6 @@
-use std::io::{self, Read as _};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::io;
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -34,15 +35,22 @@ struct Cli {
     output_dir: Option<PathBuf>,
 }
 
-fn random_hex() -> Result<String> {
-    use std::fmt::Write;
-    let mut buf = [0u8; 8];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
-    let mut hex = String::with_capacity(16);
-    for b in buf {
-        let _ = write!(hex, "{b:02x}");
+/// Atomically creates a temp directory using `mkdtemp(3)`, avoiding the
+/// TOCTOU race inherent in separate path-generation + `mkdir` calls.
+fn create_temp_dir() -> Result<PathBuf> {
+    let template = std::env::temp_dir().join("veilbreak-XXXXXX");
+    let mut template_bytes = template.into_os_string().into_vec();
+    template_bytes.push(0); // NUL-terminate for C
+    let ptr = template_bytes.as_mut_ptr().cast::<libc::c_char>();
+    // SAFETY: `template_bytes` is a valid NUL-terminated C string with a
+    // writable XXXXXX suffix. `mkdtemp` replaces the suffix atomically and
+    // creates the directory with mode 0700.
+    let result = unsafe { libc::mkdtemp(ptr) };
+    if result.is_null() {
+        anyhow::bail!("mkdtemp failed: {}", std::io::Error::last_os_error());
     }
-    Ok(hex)
+    template_bytes.pop(); // remove NUL terminator
+    Ok(PathBuf::from(std::ffi::OsString::from_vec(template_bytes)))
 }
 
 fn restore_terminal() {
@@ -59,13 +67,7 @@ fn resolve_output_dir(user_dir: Option<PathBuf>) -> Result<PathBuf> {
         );
         Ok(dir.canonicalize()?)
     } else {
-        let dir = std::env::temp_dir().join(format!(
-            "veilbreak-{}-{}",
-            std::process::id(),
-            random_hex()?
-        ));
-        std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
-        Ok(dir)
+        create_temp_dir()
     }
 }
 
