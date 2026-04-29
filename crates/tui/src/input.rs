@@ -223,14 +223,15 @@ fn scroll_up(dash: &mut DashboardState, step: usize) {
     }
 }
 
-fn scroll_down(dash: &mut DashboardState, ap_count: usize, step: usize) {
+fn scroll_down(dash: &mut DashboardState, ap_count: usize, event_count: usize, step: usize) {
     match dash.focus {
         FocusPane::ApList => {
             let max = ap_count.saturating_sub(1);
             dash.select_ap(dash.selected_ap().saturating_add(step).min(max));
         }
         FocusPane::EventLog => {
-            dash.event_scroll = dash.event_scroll.saturating_add(step);
+            let max = event_count.saturating_sub(1);
+            dash.event_scroll = dash.event_scroll.saturating_add(step).min(max);
         }
         FocusPane::Detail => {}
     }
@@ -250,6 +251,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
         .values()
         .filter(|ap| dash.filter.matches(ap))
         .count();
+    let event_count = state.event_log.len();
 
     match key {
         KeyCode::Char('q') => Outcome::Quit,
@@ -266,7 +268,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            scroll_down(dash, ap_count, 1);
+            scroll_down(dash, ap_count, event_count, 1);
             Outcome::Continue
         }
         KeyCode::PageUp => {
@@ -274,7 +276,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         KeyCode::PageDown => {
-            scroll_down(dash, ap_count, PAGE_SIZE);
+            scroll_down(dash, ap_count, event_count, PAGE_SIZE);
             Outcome::Continue
         }
         KeyCode::Char('g') => {
