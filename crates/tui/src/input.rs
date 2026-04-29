@@ -6,7 +6,7 @@ use crossterm::event::KeyCode;
 use veilbreak_core::AppState;
 use veilbreak_core::aireplay::DeauthTarget;
 
-use crate::app::{DashboardState, DeauthModal, FocusPane, Screen, SetupScreen};
+use crate::app::{DashboardState, FocusPane, Modal, Screen, SetupScreen};
 
 /// What the app loop should do after processing a key.
 #[must_use]
@@ -87,7 +87,7 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
 }
 
 fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
-    let Some(modal) = &mut dash.modal else {
+    let Some(Modal::Deauth(modal)) = &mut dash.modal else {
         return Outcome::Continue;
     };
 
@@ -128,9 +128,55 @@ fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
     }
 }
 
+const FILTER_ROW_COUNT: usize = 2;
+
+fn handle_filter_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
+    let Some(Modal::Filter { selected }) = &mut dash.modal else {
+        return Outcome::Continue;
+    };
+
+    match key {
+        KeyCode::Esc | KeyCode::Char('q' | 'f') => {
+            dash.modal = None;
+            Outcome::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            *selected = selected.saturating_sub(1);
+            Outcome::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            *selected = (*selected + 1).min(FILTER_ROW_COUNT - 1);
+            Outcome::Continue
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => {
+            let row = *selected;
+            match row {
+                0 => dash.filter.hidden_only = !dash.filter.hidden_only,
+                _ => dash.filter.band = dash.filter.band.next(),
+            }
+            Outcome::Continue
+        }
+        _ => Outcome::Continue,
+    }
+}
+
+fn handle_help_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
+    match key {
+        KeyCode::Esc | KeyCode::Char('q' | '?') => {
+            dash.modal = None;
+            Outcome::Continue
+        }
+        _ => Outcome::Continue,
+    }
+}
+
 fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCode) -> Outcome {
-    if dash.modal.is_some() {
-        return handle_deauth_modal_key(dash, key);
+    if let Some(modal) = &dash.modal {
+        return match modal {
+            Modal::Deauth(_) => handle_deauth_modal_key(dash, key),
+            Modal::Filter { .. } => handle_filter_modal_key(dash, key),
+            Modal::Help => handle_help_key(dash, key),
+        };
     }
 
     let ap_count = state.access_points.len();
@@ -200,13 +246,21 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
                         .map(|c| (c.mac.clone(), c.power))
                         .collect();
                     clients.sort_by_key(|&(_, power)| Reverse(power));
-                    dash.modal = Some(DeauthModal {
+                    dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
                         bssid: ap.bssid.clone(),
                         clients,
                         selected: 0,
-                    });
+                    }));
                 }
             }
+            Outcome::Continue
+        }
+        KeyCode::Char('f') => {
+            dash.modal = Some(Modal::Filter { selected: 0 });
+            Outcome::Continue
+        }
+        KeyCode::Char('?') => {
+            dash.modal = Some(Modal::Help);
             Outcome::Continue
         }
         _ => Outcome::Continue,

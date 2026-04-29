@@ -23,6 +23,10 @@ pub enum Error {
     /// An error from the aireplay module.
     #[error(transparent)]
     Aireplay(#[from] AireplayError),
+
+    /// An error from the persistence module.
+    #[error(transparent)]
+    Persist(#[from] PersistError),
 }
 
 /// Errors from wireless interface detection and management.
@@ -106,4 +110,16 @@ pub enum AireplayError {
     /// An argument failed validation at the command boundary.
     #[error("invalid argument for aireplay-ng: {0}")]
     InvalidArgument(String),
+}
+
+/// Errors from persistence operations.
+#[derive(Debug, Error)]
+pub enum PersistError {
+    /// Failed to write to the output file.
+    #[error("I/O error writing reveal log: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Failed to serialize a record to JSON.
+    #[error("JSON serialization failed: {0}")]
+    Serialize(#[from] serde_json::Error),
 }

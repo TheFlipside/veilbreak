@@ -14,12 +14,22 @@ pub fn draw(frame: &mut Frame, area: Rect, dash: &DashboardState) {
             ("Enter", "select"),
             ("d", "deauth"),
             ("s", "sort"),
+            ("f", "filter"),
+            ("?", "help"),
             ("q", "quit"),
         ],
-        FocusPane::Detail => &[("Tab", "focus"), ("d", "deauth"), ("q", "quit")],
+        FocusPane::Detail => &[
+            ("Tab", "focus"),
+            ("d", "deauth"),
+            ("f", "filter"),
+            ("?", "help"),
+            ("q", "quit"),
+        ],
         FocusPane::EventLog => &[
             ("Tab", "focus"),
             ("\u{2191}\u{2193}/jk", "scroll"),
+            ("f", "filter"),
+            ("?", "help"),
             ("q", "quit"),
         ],
     };

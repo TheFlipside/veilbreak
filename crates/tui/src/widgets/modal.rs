@@ -1,10 +1,10 @@
-//! Modal dialogs for the setup flow and runtime overlays (deauth target picker).
+//! Modal dialogs for the setup flow and runtime overlays.
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use veilbreak_core::interface::WirelessInterface;
 
-use crate::app::{DeauthModal, SetupScreen};
+use crate::app::{DeauthModal, FilterState, SetupScreen};
 use crate::theme;
 
 /// Draws the appropriate setup modal for the current setup step.
@@ -154,6 +154,101 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
         Span::styled("Esc", theme::KEYBIND_KEY),
         Span::raw("] cancel"),
     ])));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, modal_area);
+}
+
+const HELP_ENTRIES: &[(&str, &str)] = &[
+    ("\u{2191}\u{2193} / j k", "Navigate list"),
+    ("Tab / Shift+Tab", "Cycle focus pane"),
+    ("Enter", "Select AP / confirm"),
+    ("d", "Deauth selected AP"),
+    ("s", "Cycle sort column"),
+    ("f", "Toggle filters"),
+    ("g / G", "Jump to first / last AP"),
+    ("?", "This help"),
+    ("q / Esc", "Quit / close modal"),
+];
+
+/// Draws the keybind reference help overlay.
+pub fn draw_help_modal(frame: &mut Frame) {
+    let area = frame.area();
+
+    let height = u16::try_from(HELP_ENTRIES.len() + 5)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let modal_area = centered_rect(56, height, area);
+
+    frame.render_widget(Clear, modal_area);
+
+    let block = Block::default()
+        .title(" Keybind Reference ")
+        .title_style(theme::TITLE)
+        .borders(Borders::ALL)
+        .border_style(theme::BORDER_FOCUSED);
+
+    let mut items: Vec<ListItem> = HELP_ENTRIES
+        .iter()
+        .map(|(key, desc)| {
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("  {key:<20}"), theme::KEYBIND_KEY),
+                Span::raw(*desc),
+            ]))
+        })
+        .collect();
+
+    items.push(ListItem::new(""));
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw("  ["),
+        Span::styled("Esc", theme::KEYBIND_KEY),
+        Span::raw("] close"),
+    ])));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, modal_area);
+}
+
+/// Draws the AP list filter modal.
+pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterState) {
+    let area = frame.area();
+    let modal_area = centered_rect(44, 8, area);
+
+    frame.render_widget(Clear, modal_area);
+
+    let block = Block::default()
+        .title(" Filters ")
+        .title_style(theme::TITLE)
+        .borders(Borders::ALL)
+        .border_style(theme::BORDER_FOCUSED);
+
+    let hidden_prefix = if selected == 0 { "\u{25b6} " } else { "  " };
+    let band_prefix = if selected == 1 { "\u{25b6} " } else { "  " };
+    let hidden_style = if selected == 0 {
+        theme::SELECTED
+    } else {
+        Style::default()
+    };
+    let band_style = if selected == 1 {
+        theme::SELECTED
+    } else {
+        Style::default()
+    };
+
+    let hidden_value = if filter.hidden_only { "ON" } else { "OFF" };
+
+    let items = vec![
+        ListItem::new(format!("{hidden_prefix}Hidden only:  {hidden_value}")).style(hidden_style),
+        ListItem::new(format!("{band_prefix}Band:  {}", filter.band.label())).style(band_style),
+        ListItem::new(""),
+        ListItem::new(Line::from(vec![
+            Span::raw("  ["),
+            Span::styled("Enter", theme::KEYBIND_KEY),
+            Span::raw("] toggle  ["),
+            Span::styled("Esc", theme::KEYBIND_KEY),
+            Span::raw("] close"),
+        ])),
+    ];
 
     let list = List::new(items).block(block);
     frame.render_widget(list, modal_area);

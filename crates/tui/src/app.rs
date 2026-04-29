@@ -1,5 +1,6 @@
 //! Main application loop and screen state management.
 
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -11,6 +12,7 @@ use tokio::task::JoinHandle;
 use veilbreak_core::aireplay;
 use veilbreak_core::airodump::AirodumpController;
 use veilbreak_core::interface::WirelessInterface;
+use veilbreak_core::persist;
 use veilbreak_core::tshark::TsharkController;
 use veilbreak_core::{AppEvent, AppState, SortColumn};
 
@@ -60,8 +62,10 @@ pub struct DashboardState {
     pub channel: Option<u32>,
     /// Scroll offset in the event log.
     pub event_scroll: usize,
-    /// Active deauth modal overlay, if any.
-    pub modal: Option<DeauthModal>,
+    /// Active modal overlay, if any.
+    pub modal: Option<Modal>,
+    /// Active AP list filters.
+    pub filter: FilterState,
 }
 
 /// State for the deauth target selection modal.
@@ -73,6 +77,78 @@ pub struct DeauthModal {
     pub clients: Vec<(String, i32)>,
     /// Selected index: 0 = broadcast, 1..N = targeted client at `clients[N-1]`.
     pub selected: usize,
+}
+
+/// Active modal overlay variant.
+#[derive(Debug)]
+pub enum Modal {
+    /// Deauth target picker.
+    Deauth(DeauthModal),
+    /// AP list filter toggles.
+    Filter {
+        /// Selected row: 0 = hidden-only, 1 = band.
+        selected: usize,
+    },
+    /// Full keybind reference overlay.
+    Help,
+}
+
+/// Persistent filter state for the AP list.
+#[derive(Debug, Default)]
+pub struct FilterState {
+    /// Show only hidden (unrevealed) APs.
+    pub hidden_only: bool,
+    /// Band filter.
+    pub band: BandFilter,
+}
+
+impl FilterState {
+    /// Returns `true` if the access point passes all active filters.
+    #[must_use]
+    pub const fn matches(&self, ap: &veilbreak_core::state::AccessPoint) -> bool {
+        if self.hidden_only && !ap.hidden {
+            return false;
+        }
+        match self.band {
+            BandFilter::All => true,
+            BandFilter::TwoFour => ap.channel > 0 && ap.channel <= 14,
+            BandFilter::Five => ap.channel >= 36,
+        }
+    }
+}
+
+/// Band filter for the AP list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BandFilter {
+    /// Show all bands.
+    #[default]
+    All,
+    /// 2.4 GHz only (channels 1–14).
+    TwoFour,
+    /// 5 GHz only (channels 36+).
+    Five,
+}
+
+impl BandFilter {
+    /// Cycle to the next band filter value.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::All => Self::TwoFour,
+            Self::TwoFour => Self::Five,
+            Self::Five => Self::All,
+        }
+    }
+
+    /// Human-readable label for the current filter.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::TwoFour => "2.4 GHz",
+            Self::Five => "5 GHz",
+        }
+    }
 }
 
 /// Which pane currently has keyboard focus.
@@ -125,6 +201,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     let mut tshark_ctrl: Option<TsharkController> = None;
     let mut session_spawn_attempted = false;
     let mut deauth_guard = DeauthGuard::default();
+    let mut reveal_log = open_reveal_log(output_dir);
 
     let mut screen = detect_initial_screen(replay).await;
 
@@ -136,6 +213,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
             Some(event) = rx.recv() => {
                 state.apply_event(&event);
                 apply_event_to_log(&mut state, &event);
+                persist_reveal(&mut reveal_log, &state, &event);
                 let mut hidden_set_changed = changes_hidden_set(&event);
                 // Drain up to a bounded number of queued events per frame
                 // to prevent starving the terminal input arm.
@@ -145,6 +223,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                             hidden_set_changed |= changes_hidden_set(&ev);
                             state.apply_event(&ev);
                             apply_event_to_log(&mut state, &ev);
+                            persist_reveal(&mut reveal_log, &state, &ev);
                         }
                         Err(mpsc::error::TryRecvError::Empty) => break,
                         Err(mpsc::error::TryRecvError::Disconnected) => {
@@ -319,6 +398,46 @@ impl Drop for DeauthGuard {
         for h in &self.0 {
             h.abort();
         }
+    }
+}
+
+fn open_reveal_log(output_dir: &Path) -> Option<std::fs::File> {
+    let path = output_dir.join("revealed.jsonl");
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&path)
+    {
+        Ok(f) => Some(f),
+        Err(e) => {
+            tracing::warn!("failed to open reveal log at {}: {e}", path.display());
+            None
+        }
+    }
+}
+
+fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &AppEvent) {
+    let AppEvent::SsidRevealed {
+        bssid,
+        ssid,
+        source,
+    } = event
+    else {
+        return;
+    };
+    let Some(f) = file.as_mut() else {
+        return;
+    };
+    let record = persist::RevealRecord {
+        elapsed_secs: state.elapsed_secs(),
+        bssid,
+        ssid,
+        source: &source.to_string(),
+    };
+    if let Err(e) = persist::write_reveal_entry(f, &record) {
+        tracing::warn!("failed to write reveal log entry: {e}");
     }
 }
 

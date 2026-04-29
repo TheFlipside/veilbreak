@@ -6,6 +6,18 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Help overlay (`?` key): full-screen keybind reference modal with all dashboard shortcuts
+- Filter modal (`f` key): toggle hidden-only filter and band filter (All / 2.4 GHz / 5 GHz) for the AP list
+- `Modal` enum generalizing deauth, filter, and help overlays (replaces `Option<DeauthModal>`)
+- `FilterState` and `BandFilter` types on `DashboardState` with `matches()` predicate for AP filtering
+- `FILTER_ROW_COUNT` constant in input handler for maintainable filter modal navigation bounds
+- `core::persist` module: `RevealRecord` struct and `write_reveal_entry()` NDJSON serializer for revealed-SSID logging
+- `PersistError` error type with `Io` and `Serialize` variants, registered in `core::Error`
+- `revealed.jsonl` persistence: each `SsidRevealed` event appends an NDJSON record to the session output directory
+- `--output-dir <DIR>` CLI flag: use an existing directory for session output instead of auto-created temp directory
+- `resolve_output_dir()` helper extracting output directory resolution from `run_tui`
+- `f`/filter and `?`/help keybind hints added to all three focus pane hint arrays
+- 2 unit tests for NDJSON serialization in `core::persist` (single record + multi-line append)
 - `core::aireplay` module: spawns `aireplay-ng --deauth` for broadcast or targeted deauthentication, emits `DeauthComplete` on success and `AppEvent::Error` on failure
 - `DeauthTarget` enum with `Broadcast` and `Targeted` variants and `bssid()` accessor
 - `run_deauth()` async function with defense-in-depth validation of BSSID, client MAC, and interface name at the command boundary
@@ -83,6 +95,10 @@ All notable changes to this project are documented in this file.
 - **Output directory validated**: `AirodumpController::spawn()` canonicalizes and verifies `output_dir` is a directory
 - **Bounded event processing**: both `AppEvent` and terminal input drains capped at 64 per frame to prevent starvation
 - **Unicode Bidi attack surface closed**: `sanitize_display_string` strips directional overrides, isolates, zero-width marks, C1 controls, and soft hyphens
+- **Reveal log symlink attack prevented**: `open_reveal_log` opens `revealed.jsonl` with `O_NOFOLLOW` flag, preventing symlink-based file overwrite when running as root
+- **Log file moved into session directory**: `veilbreak.log` now written to the session output directory (mode `0o700`) instead of fixed `/tmp/veilbreak.log`, eliminating predictable-path hard-link information disclosure
+- **User-supplied output directory canonicalized**: `--output-dir` path is canonicalized via `Path::canonicalize()` immediately after validation, resolving symlink components and `..` traversal before any file operations
+- **Band filter guards unknown channels**: `FilterState::matches` rejects `channel == 0` (unknown) from the 2.4 GHz filter to prevent false positives
 
 ### Changed
 
@@ -95,6 +111,12 @@ All notable changes to this project are documented in this file.
 - `AppState::event_log` changed from `Vec` to `VecDeque` for O(1) eviction
 - App event loop uses `tokio::select!` over mpsc receiver and terminal polling
 - `InterfaceMode::Other` variant now sanitized before storage
+- `DashboardState::modal` changed from `Option<DeauthModal>` to `Option<Modal>` enum supporting deauth, filter, and help overlays
+- `draw_filter_modal()` accepts explicit `(selected, &FilterState)` parameters instead of re-matching `DashboardState::modal` internally
+- `init_logging()` now accepts `&Path` and writes log file into the session output directory
+- Output directory resolution extracted from `run_tui()` into `resolve_output_dir()`, called before logging init
+- AP list in dashboard filtered through `FilterState::matches()` before rendering
+- DESIGN.md Phase 5 updated to reflect implemented features; channel locking and configurable theme moved to Out of Scope
 
 ### 0.1.0 - 2026-04-29
 

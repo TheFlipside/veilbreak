@@ -338,11 +338,10 @@ Worth reading before/during implementation:
 
 ### Phase 5 — Polish
 
-- Filter modal, channel locking, pause/resume hopping.
-- Help overlay.
-- Configurable theme (`theme.rs`).
-- Persistence: save session pcaps and revealed-SSID log to a session
-  directory by default, with a flag to suppress.
+- Filter modal (`f` key): hidden-only toggle and band filter (All / 2.4 GHz / 5 GHz).
+- Help overlay (`?` key): full keybind reference modal.
+- Persistence: revealed-SSID log (`revealed.jsonl`) written to session
+  directory, `--output-dir` CLI flag for user-specified output path.
 
 ### Phase 6 (stretch) — Privilege split
 
@@ -353,6 +352,8 @@ Worth reading before/during implementation:
 
 ## 11. Out of Scope (for now)
 
+- Channel locking and pause/resume hopping.
+- Configurable theme (`theme.rs`).
 - WPA handshake capture and cracking (covered well by existing tools).
 - WPS attacks.
 - 5GHz/6GHz beyond what the chosen card supports natively.

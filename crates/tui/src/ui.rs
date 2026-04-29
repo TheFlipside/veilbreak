@@ -16,6 +16,8 @@ pub fn draw(frame: &mut Frame, screen: &Screen, state: &AppState) {
 }
 
 fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &AppState) {
+    use crate::app::Modal;
+
     let area = frame.area();
 
     let vertical = Layout::vertical([
@@ -32,12 +34,21 @@ fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &
         .split(vertical[1]);
 
     let sorted = state.sorted_aps(dash.sort);
-    widgets::ap_list::draw(frame, body[0], &sorted, dash);
-    widgets::detail::draw(frame, body[1], &sorted, dash);
+    let filtered: Vec<_> = sorted
+        .into_iter()
+        .filter(|(_, ap)| dash.filter.matches(ap))
+        .collect();
+    widgets::ap_list::draw(frame, body[0], &filtered, dash);
+    widgets::detail::draw(frame, body[1], &filtered, dash);
     widgets::events::draw(frame, vertical[2], state, dash);
     widgets::keybinds::draw(frame, vertical[3], dash);
 
-    if let Some(modal) = &dash.modal {
-        widgets::modal::draw_deauth_modal(frame, modal);
+    match &dash.modal {
+        Some(Modal::Deauth(modal)) => widgets::modal::draw_deauth_modal(frame, modal),
+        Some(Modal::Filter { selected }) => {
+            widgets::modal::draw_filter_modal(frame, *selected, &dash.filter);
+        }
+        Some(Modal::Help) => widgets::modal::draw_help_modal(frame),
+        None => {}
     }
 }
