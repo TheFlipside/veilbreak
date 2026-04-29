@@ -542,7 +542,7 @@ const fn changes_hidden_set(event: &AppEvent) -> bool {
 }
 
 fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {
-    use veilbreak_core::validate::sanitize_display_string;
+    use veilbreak_core::validate::{self, sanitize_display_string};
 
     let msg = match event {
         AppEvent::ApDiscovered(ap) => {
@@ -559,6 +559,7 @@ fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {
             source,
         } => {
             let safe_ssid = sanitize_display_string(ssid);
+            let safe_ssid = validate::truncate_utf8(&safe_ssid, validate::MAX_ESSID_LEN);
             format!("ssid revealed via {source}  {bssid} \u{2192} \"{safe_ssid}\"")
         }
         AppEvent::DeauthComplete { bssid, frames_sent } => {

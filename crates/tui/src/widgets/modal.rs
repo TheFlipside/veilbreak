@@ -46,6 +46,8 @@ fn draw_interface_select(
         .min(area.height);
     let modal = centered_rect(64, height, area);
 
+    frame.render_widget(Clear, modal);
+
     let block = Block::default()
         .title(" Select Monitoring Interface ")
         .title_style(theme::TITLE)
@@ -115,6 +117,9 @@ fn draw_mode_confirm(
     band: Band,
 ) {
     let modal = centered_rect(54, 9, area);
+
+    frame.render_widget(Clear, modal);
+
     let block = Block::default()
         .title(" Confirm Mode ")
         .title_style(theme::TITLE)
@@ -162,7 +167,7 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
         .borders(Borders::ALL)
         .border_style(theme::BORDER_DANGER);
 
-    let mut items: Vec<ListItem> = Vec::with_capacity(item_count + 1);
+    let mut items: Vec<ListItem> = Vec::with_capacity(item_count + 2);
 
     let broadcast_prefix = if modal.selected == 0 {
         "\u{25b6} "
