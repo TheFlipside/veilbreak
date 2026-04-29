@@ -505,7 +505,7 @@ fn open_reveal_log(output_dir: &Path) -> Option<std::fs::File> {
 }
 
 fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &AppEvent) {
-    use veilbreak_core::validate::sanitize_display_string;
+    use veilbreak_core::validate::{self, sanitize_display_string};
 
     let AppEvent::SsidRevealed {
         bssid,
@@ -515,14 +515,18 @@ fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &Ap
     else {
         return;
     };
+    if !validate::is_valid_bssid(bssid) {
+        return;
+    }
     let Some(f) = file.as_mut() else {
         return;
     };
     let safe_ssid = sanitize_display_string(ssid);
+    let safe_ssid = validate::truncate_utf8(&safe_ssid, validate::MAX_ESSID_LEN);
     let record = persist::RevealRecord {
         elapsed_secs: state.elapsed_secs(),
         bssid,
-        ssid: &safe_ssid,
+        ssid: safe_ssid,
         source: &source.to_string(),
     };
     if let Err(e) = persist::write_reveal_entry(f, &record) {
