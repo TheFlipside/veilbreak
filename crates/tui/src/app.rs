@@ -22,6 +22,8 @@ use crate::ui;
 /// Which screen is currently displayed.
 #[derive(Debug)]
 pub enum Screen {
+    /// Detecting wireless interfaces.
+    Loading,
     /// Pre-session setup flow.
     Setup(SetupScreen),
     /// Main operational dashboard.
@@ -203,11 +205,17 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     let mut deauth_guard = DeauthGuard::default();
     let mut reveal_log = open_reveal_log(output_dir);
 
-    let mut screen = detect_initial_screen(replay).await;
+    let (mut screen, mut detect_task) = initial_screen_and_task(replay.as_deref());
+    let mut tick: u8 = 0;
 
     loop {
         deauth_guard.prune();
-        terminal.draw(|frame| ui::draw(frame, &screen, &state))?;
+        terminal.draw(|frame| ui::draw(frame, &screen, &state, tick))?;
+
+        if let Some(new_screen) = resolve_detect_task(&mut detect_task).await {
+            screen = new_screen;
+            continue;
+        }
 
         tokio::select! {
             Some(event) = rx.recv() => {
@@ -284,14 +292,57 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                     );
                 }
             }
+            // Wake the loop to check detect_task completion while loading.
+            () = tokio::time::sleep(Duration::from_millis(100)), if detect_task.is_some() => {
+                tick = tick.wrapping_add(1);
+            }
         }
     }
 }
 
-async fn detect_initial_screen(replay: Option<String>) -> Screen {
-    if replay.is_some() {
-        return Screen::Dashboard(DashboardState::default());
+async fn resolve_detect_task(task: &mut Option<DetectGuard>) -> Option<Screen> {
+    let guard = task.as_ref()?;
+    if !guard.is_finished() {
+        return None;
     }
+    let handle = task.take().and_then(DetectGuard::into_handle)?;
+    Some(handle.await.unwrap_or_else(|e| {
+        tracing::error!("interface detection task failed: {e}");
+        Screen::Dashboard(DashboardState::default())
+    }))
+}
+
+fn initial_screen_and_task(replay: Option<&str>) -> (Screen, Option<DetectGuard>) {
+    if replay.is_some() {
+        (Screen::Dashboard(DashboardState::default()), None)
+    } else {
+        let handle = tokio::spawn(detect_initial_screen());
+        (Screen::Loading, Some(DetectGuard(Some(handle))))
+    }
+}
+
+/// Aborts the interface detection task on drop so it never outlives the app.
+struct DetectGuard(Option<JoinHandle<Screen>>);
+
+impl DetectGuard {
+    fn is_finished(&self) -> bool {
+        self.0.as_ref().is_some_and(JoinHandle::is_finished)
+    }
+
+    fn into_handle(mut self) -> Option<JoinHandle<Screen>> {
+        self.0.take()
+    }
+}
+
+impl Drop for DetectGuard {
+    fn drop(&mut self) {
+        if let Some(h) = &self.0 {
+            h.abort();
+        }
+    }
+}
+
+async fn detect_initial_screen() -> Screen {
     match veilbreak_core::interface::detect_interfaces().await {
         Ok(ifaces) if !ifaces.is_empty() => Screen::Setup(SetupScreen::InterfaceSelect {
             interfaces: ifaces,

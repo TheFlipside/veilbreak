@@ -16,6 +16,8 @@ All notable changes to this project are documented in this file.
 - `revealed.jsonl` persistence: each `SsidRevealed` event appends an NDJSON record to the session output directory
 - `--output-dir <DIR>` CLI flag: use an existing directory for session output instead of auto-created temp directory
 - `resolve_output_dir()` helper extracting output directory resolution from `run_tui`
+- `Screen::Loading` variant with animated dot indicator during async interface detection
+- `DetectGuard` abort-on-drop wrapper ensuring the detection task never outlives the app
 - `f`/filter and `?`/help keybind hints added to all three focus pane hint arrays
 - 2 unit tests for NDJSON serialization in `core::persist` (single record + multi-line append)
 - `core::aireplay` module: spawns `aireplay-ng --deauth` for broadcast or targeted deauthentication, emits `DeauthComplete` on success and `AppEvent::Error` on failure
@@ -74,6 +76,7 @@ All notable changes to this project are documented in this file.
 - Interfaces with invalid phy names are now rejected during parsing
 - `AirodumpController::Drop` no longer panics in async context (`blocking_lock()` replaced with `try_lock()` + PID fallback)
 - Redundant `AirodumpController::stop()` removed — `Drop` is the sole cleanup path
+- Startup delay eliminated: interface detection runs in a background task while the loading screen renders immediately
 
 ### Security
 
@@ -110,6 +113,8 @@ All notable changes to this project are documented in this file.
 - `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
 - `run_tshark()` refactored from `Command::output()` to `Command::spawn()` with piped stdout/stderr, bounded streaming reads, and `kill_on_drop(true)`
 - `AirodumpController` stores `child_pid: u32` alongside `Arc<Mutex<Child>>` for the `Drop` fallback kill path
+- `detect_initial_screen()` moved from blocking `await` to a spawned task; `resolve_detect_task()` polls completion via the `tokio::select!` sleep arm
+- `ui::draw()` accepts a `tick: u8` counter for deterministic loading animation (replaces `SystemTime`)
 - Tshark poll loop uses owned `Vec<String>` for unrevealed BSSIDs to release lock before subprocess call
 - CI actions pinned to commit SHAs instead of mutable tags
 - `AccessPoint::clients` changed from `Vec<Client>` to `HashMap<String, Client>` for O(1) lookup

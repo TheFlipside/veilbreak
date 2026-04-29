@@ -29,6 +29,10 @@ enum SetupOutcome {
 /// Processes a key press, mutating screen/state as needed.
 pub fn handle_key(screen: &mut Screen, state: &AppState, key: KeyCode) -> Outcome {
     let transition = match screen {
+        Screen::Loading => match key {
+            KeyCode::Char('q') | KeyCode::Esc => return Outcome::Quit,
+            _ => return Outcome::Continue,
+        },
         Screen::Setup(setup) => handle_setup_key(setup, key),
         Screen::Dashboard(dash) => return handle_dashboard_key(dash, state, key),
     };
