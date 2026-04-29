@@ -206,8 +206,9 @@ async fn poll_loop(
                 ssid: packet.ssid,
                 source: packet.source,
             };
-            if tx.try_send(event).is_err() {
-                tracing::warn!("event channel full, dropping reveal event");
+            match tx.try_send(event) {
+                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                Err(mpsc::error::TrySendError::Closed(_)) => return,
             }
         }
     }
@@ -216,7 +217,9 @@ async fn poll_loop(
 const MAX_TSHARK_OUTPUT: usize = 10 * 1024 * 1024;
 
 async fn run_tshark(pcap_path: &Path, filter: &str) -> Result<String, TsharkError> {
-    let output = Command::new("tshark")
+    use tokio::io::AsyncReadExt;
+
+    let mut child = Command::new("tshark")
         .arg("-r")
         .arg(pcap_path)
         .arg("-Y")
@@ -224,27 +227,52 @@ async fn run_tshark(pcap_path: &Path, filter: &str) -> Result<String, TsharkErro
         .arg("-T")
         .arg("ek")
         .stdin(std::process::Stdio::null())
-        .output()
-        .await
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
         .map_err(TsharkError::Spawn)?;
 
-    if !output.status.success() {
-        let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        stderr.truncate(512);
-        let stderr = validate::sanitize_display_string(&stderr);
-        return Err(TsharkError::Failed {
-            status: output.status.code().unwrap_or(-1),
-            stderr,
-        });
+    // Read stdout with a hard byte cap. One extra byte detects overflow
+    // before the full output lands in memory.
+    let mut stdout_buf = Vec::new();
+    if let Some(stdout) = child.stdout.take() {
+        #[allow(clippy::cast_possible_truncation)]
+        let limit = MAX_TSHARK_OUTPUT as u64 + 1;
+        stdout
+            .take(limit)
+            .read_to_end(&mut stdout_buf)
+            .await
+            .map_err(|e| TsharkError::Parse(e.to_string()))?;
     }
 
-    if output.stdout.len() > MAX_TSHARK_OUTPUT {
+    if stdout_buf.len() > MAX_TSHARK_OUTPUT {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
         return Err(TsharkError::Parse(format!(
             "tshark output exceeds {MAX_TSHARK_OUTPUT} byte limit"
         )));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    // tshark writes JSON to stdout before error text to stderr, so by the
+    // time stdout reaches EOF the child has exited and stderr is also at EOF.
+    let mut stderr_buf = Vec::new();
+    if let Some(stderr) = child.stderr.take() {
+        stderr.take(512).read_to_end(&mut stderr_buf).await.ok();
+    }
+
+    let status = child.wait().await.map_err(TsharkError::Spawn)?;
+
+    if !status.success() {
+        let stderr = validate::sanitize_display_string(&String::from_utf8_lossy(&stderr_buf));
+        return Err(TsharkError::Failed {
+            // None on Unix means the process was killed by a signal
+            status: status.code().unwrap_or(-1),
+            stderr,
+        });
+    }
+
+    Ok(String::from_utf8_lossy(&stdout_buf).into_owned())
 }
 
 #[cfg(test)]

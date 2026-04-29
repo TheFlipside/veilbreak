@@ -184,11 +184,13 @@ pub fn diff_and_emit<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
 
 /// Handle to a running airodump-ng subprocess and its CSV watcher.
 ///
-/// The command channel for pause/resume is not yet wired — `stop()` and
-/// `Drop` terminate the subprocess directly via the held `Child` handle,
-/// avoiding PID reuse races.
+/// `Drop` terminates the subprocess via the `Child` handle when
+/// uncontended, falling back to `libc::kill` by stored PID when
+/// the waiter task holds the lock (which is safe because contention
+/// means the child is still alive inside `wait()`).
 pub struct AirodumpController {
     child: Arc<Mutex<tokio::process::Child>>,
+    child_pid: u32,
     join_handle: JoinHandle<()>,
     csv_handle: JoinHandle<()>,
     pcap_path: PathBuf,
@@ -235,6 +237,12 @@ impl AirodumpController {
             .spawn()
             .map_err(AirodumpError::Spawn)?;
 
+        let child_pid = child.id().ok_or_else(|| {
+            AirodumpError::Spawn(std::io::Error::other(
+                "airodump-ng exited immediately after spawn",
+            ))
+        })?;
+
         let child = Arc::new(Mutex::new(child));
 
         let child_waiter = Arc::clone(&child);
@@ -258,6 +266,7 @@ impl AirodumpController {
 
         Ok(Self {
             child,
+            child_pid,
             join_handle,
             csv_handle,
             pcap_path,
@@ -269,25 +278,24 @@ impl AirodumpController {
     pub fn pcap_path(&self) -> &Path {
         &self.pcap_path
     }
-
-    /// Stops the airodump-ng subprocess and CSV watcher.
-    pub fn stop(self) {
-        kill_child(&self.child);
-        self.csv_handle.abort();
-        self.join_handle.abort();
-    }
 }
 
 impl Drop for AirodumpController {
     fn drop(&mut self) {
-        kill_child(&self.child);
+        if let Ok(mut child) = self.child.try_lock() {
+            let _ = child.start_kill();
+        } else {
+            // Waiter holds the lock across wait(), so the child is still alive.
+            // SIGKILL by PID is safe here — no reuse risk because the child
+            // has not been reaped yet.
+            #[allow(clippy::cast_possible_wrap)]
+            unsafe {
+                libc::kill(self.child_pid as i32, libc::SIGKILL);
+            }
+        }
         self.csv_handle.abort();
         self.join_handle.abort();
     }
-}
-
-fn kill_child(child: &Arc<Mutex<tokio::process::Child>>) {
-    let _ = child.blocking_lock().start_kill();
 }
 
 async fn csv_watch_loop(path: PathBuf, tx: mpsc::Sender<AppEvent>) {

@@ -72,6 +72,8 @@ All notable changes to this project are documented in this file.
 - `is_root()` now checks effective UID (`geteuid`) instead of real UID for setuid correctness
 - Stderr from failed `iw` commands capped to 512 bytes to prevent log flooding
 - Interfaces with invalid phy names are now rejected during parsing
+- `AirodumpController::Drop` no longer panics in async context (`blocking_lock()` replaced with `try_lock()` + PID fallback)
+- Redundant `AirodumpController::stop()` removed — `Drop` is the sole cleanup path
 
 ### Security
 
@@ -82,12 +84,13 @@ All notable changes to this project are documented in this file.
 - **Deauth task lifecycle guaranteed**: `DeauthGuard` with `Drop` impl aborts all `JoinHandle`s on every exit path (`?` propagation, quit, channel disconnect) — no detached tasks
 - **Event channel backpressure logged**: all `try_send` failures in `run_deauth` logged via `tracing::warn` instead of silently dropped
 - **Tshark filter injection prevented**: `build_display_filter()` validates every BSSID via `is_valid_bssid()` before interpolation into the display filter expression
-- **Tshark output bounded**: `run_tshark()` rejects stdout exceeding 10 MiB to prevent memory exhaustion from large pcaps or broadened filters
+- **Tshark output bounded at read time**: `run_tshark()` streams stdout via `AsyncReadExt::take()` with a 10 MiB hard cap, preventing unbounded heap allocation from large pcaps; child is killed on overflow
 - **TOCTOU race on pcap path eliminated**: removed `pcap_path.exists()` pre-check; tshark failure is handled gracefully by the poll loop
 - **Event channel disconnection detected**: `TryRecvError::Disconnected` now returns an error instead of silently breaking the drain loop
 - **Session spawn bounded**: controller spawn attempted exactly once per session to prevent infinite retry on transient failure
 - **Output directory hardened**: randomized suffix prevents PID prediction attacks; `0o700` mode prevents local information disclosure of pcap data
-- **PID reuse race eliminated**: `AirodumpController` holds `Arc<Mutex<Child>>` instead of raw `libc::pid_t`; `blocking_lock()` guarantees process termination in `Drop`
+- **Airodump orphan process prevented**: `AirodumpController::Drop` uses `try_lock()` for the clean `Child::start_kill()` path, falling back to `libc::kill(pid, SIGKILL)` when the waiter task holds the lock — contention proves the child is alive and unreacped, so no PID reuse risk
+- **Tshark poll loop exits on channel close**: `try_send` now distinguishes `Full` (transient, ignored) from `Closed` (app shutdown, exit loop) instead of spinning indefinitely
 - **Terminal escape injection mitigated**: all untrusted strings (SSIDs, encryption, error messages, iw stderr, interface modes) sanitized via `sanitize_display_string()` at ingestion, state mutation, and log sink layers
 - **ESSID overflow prevented**: SSIDs truncated to 32 bytes at parse time and re-validated on every state write path
 - **Unbounded collection growth capped**: event log (10,000), access points (4,096), clients per AP (256)
@@ -105,6 +108,8 @@ All notable changes to this project are documented in this file.
 - `app::run()` refactored: initial screen detection, session spawn, and deauth dispatch extracted into helpers to stay within the 100-line clippy limit
 - `_airodump_ctrl` renamed to `airodump_ctrl` (no longer underscore-prefixed — now actively passed to `try_spawn_session`)
 - `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
+- `run_tshark()` refactored from `Command::output()` to `Command::spawn()` with piped stdout/stderr, bounded streaming reads, and `kill_on_drop(true)`
+- `AirodumpController` stores `child_pid: u32` alongside `Arc<Mutex<Child>>` for the `Drop` fallback kill path
 - Tshark poll loop uses owned `Vec<String>` for unrevealed BSSIDs to release lock before subprocess call
 - CI actions pinned to commit SHAs instead of mutable tags
 - `AccessPoint::clients` changed from `Vec<Client>` to `HashMap<String, Client>` for O(1) lookup
