@@ -229,6 +229,7 @@ impl AirodumpController {
             .arg("--output-format")
             .arg("pcap,csv")
             .arg(interface)
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()

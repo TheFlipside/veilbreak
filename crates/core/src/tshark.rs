@@ -223,6 +223,7 @@ async fn run_tshark(pcap_path: &Path, filter: &str) -> Result<String, TsharkErro
         .arg(filter)
         .arg("-T")
         .arg("ek")
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .map_err(TsharkError::Spawn)?;
