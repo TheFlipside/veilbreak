@@ -5,6 +5,8 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use veilbreak_core::Band;
 use veilbreak_core::interface::WirelessInterface;
 
+use veilbreak_core::validate::{is_valid_bssid, sanitize_display_string};
+
 use crate::app::{DeauthModal, FilterState, SetupScreen};
 use crate::theme;
 
@@ -148,11 +150,14 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
     frame.render_widget(Clear, modal_area);
 
     debug_assert!(
-        veilbreak_core::validate::is_valid_bssid(&modal.bssid),
+        is_valid_bssid(&modal.bssid),
         "DeauthModal.bssid must be a validated BSSID"
     );
     let block = Block::default()
-        .title(format!(" Deauth: {} ", modal.bssid))
+        .title(format!(
+            " Deauth: {} ",
+            sanitize_display_string(&modal.bssid)
+        ))
         .title_style(theme::TITLE)
         .borders(Borders::ALL)
         .border_style(theme::BORDER_DANGER);
@@ -186,10 +191,11 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
             Style::default()
         };
         debug_assert!(
-            veilbreak_core::validate::is_valid_bssid(mac),
-            "DeauthModal client MAC must be a validated BSSID"
+            is_valid_bssid(mac),
+            "DeauthModal client MAC must be a validated MAC"
         );
-        items.push(ListItem::new(format!("{prefix}{mac}  {power} dBm")).style(style));
+        let safe_mac = sanitize_display_string(mac);
+        items.push(ListItem::new(format!("{prefix}{safe_mac}  {power} dBm")).style(style));
     }
 
     items.push(ListItem::new(""));
