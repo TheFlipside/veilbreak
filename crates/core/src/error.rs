@@ -99,17 +99,28 @@ pub enum AireplayError {
     Spawn(#[source] std::io::Error),
 
     /// aireplay-ng exited with a non-zero status.
-    #[error("aireplay-ng exited with status {status}: {stderr}")]
+    #[error("aireplay-ng exited with status {status}: {output}")]
     Failed {
         /// Process exit code.
         status: i32,
-        /// Captured stderr (truncated, sanitized).
-        stderr: String,
+        /// Captured diagnostic output (truncated, sanitized).
+        output: String,
     },
 
     /// An argument failed validation at the command boundary.
     #[error("invalid argument for aireplay-ng: {0}")]
     InvalidArgument(String),
+
+    /// Failed to set the wireless interface channel via `iw`.
+    #[error("failed to set channel {channel} on {interface}: {stderr}")]
+    ChannelSet {
+        /// Target channel.
+        channel: u32,
+        /// Interface name.
+        interface: String,
+        /// Captured stderr from `iw` (truncated, sanitized).
+        stderr: String,
+    },
 }
 
 /// Errors from persistence operations.

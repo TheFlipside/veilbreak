@@ -103,6 +103,8 @@ impl DashboardState {
 pub struct DeauthModal {
     /// BSSID of the target AP.
     pub bssid: String,
+    /// Operating channel of the target AP.
+    pub channel: u32,
     /// Clients associated with the target AP, sorted by signal strength (strongest first).
     pub clients: Vec<(String, i32)>,
     /// Selected index: 0 = broadcast, 1..N = targeted client at `clients[N-1]`.

@@ -20,6 +20,8 @@ const MAX_DEAUTH_COUNT: u32 = 128;
 const MAX_STDERR_LEN: usize = 512;
 /// Sentinel for processes killed by a signal (no exit code available).
 const UNKNOWN_EXIT_STATUS: i32 = -1;
+/// Upper bound for valid Wi-Fi channel numbers.
+const MAX_CHANNEL: u32 = 200;
 
 /// Specifies the target for a deauthentication attack.
 #[derive(Debug, Clone)]
@@ -28,6 +30,8 @@ pub enum DeauthTarget {
     Broadcast {
         /// BSSID of the target access point.
         bssid: String,
+        /// Operating channel of the target AP.
+        channel: u32,
     },
     /// Targeted deauth — hits a single client.
     Targeted {
@@ -35,6 +39,8 @@ pub enum DeauthTarget {
         bssid: String,
         /// MAC address of the target client.
         client: String,
+        /// Operating channel of the target AP.
+        channel: u32,
     },
 }
 
@@ -43,7 +49,15 @@ impl DeauthTarget {
     #[must_use]
     pub fn bssid(&self) -> &str {
         match self {
-            Self::Broadcast { bssid } | Self::Targeted { bssid, .. } => bssid,
+            Self::Broadcast { bssid, .. } | Self::Targeted { bssid, .. } => bssid,
+        }
+    }
+
+    /// Returns the operating channel of the target AP.
+    #[must_use]
+    pub const fn channel(&self) -> u32 {
+        match self {
+            Self::Broadcast { channel, .. } | Self::Targeted { channel, .. } => *channel,
         }
     }
 }
@@ -56,6 +70,43 @@ const fn clamp_frame_count(count: u32) -> u32 {
     } else {
         count
     }
+}
+
+/// Sets the wireless interface to the given channel via `iw`.
+///
+/// This is necessary before running `aireplay-ng` because it has no
+/// channel flag of its own — it relies on the interface already being
+/// tuned to the target AP's channel.
+async fn set_channel(interface: &str, channel: u32) -> Result<(), AireplayError> {
+    let output = Command::new("iw")
+        .arg("dev")
+        .arg(interface)
+        .arg("set")
+        .arg("channel")
+        .arg(channel.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| AireplayError::ChannelSet {
+            channel,
+            interface: interface.to_owned(),
+            stderr: validate::sanitize_display_string(&e.to_string()),
+        })?;
+
+    if !output.status.success() {
+        let raw = String::from_utf8_lossy(&output.stderr);
+        let stderr =
+            validate::sanitize_display_string(validate::truncate_utf8(&raw, MAX_STDERR_LEN));
+        return Err(AireplayError::ChannelSet {
+            channel,
+            interface: interface.to_owned(),
+            stderr,
+        });
+    }
+
+    Ok(())
 }
 
 /// Spawns an `aireplay-ng --deauth` process and waits for completion.
@@ -97,10 +148,19 @@ pub async fn run_deauth(
         )));
     }
 
+    let channel = target.channel();
+    if channel == 0 || channel > MAX_CHANNEL {
+        return Err(AireplayError::InvalidArgument(format!(
+            "invalid channel: {channel}"
+        )));
+    }
+
     let count = clamp_frame_count(frame_count);
     if count != frame_count {
         tracing::warn!("deauth frame count clamped from {frame_count} to {count}");
     }
+
+    set_channel(interface, channel).await?;
 
     let mut cmd = Command::new("aireplay-ng");
     cmd.arg("--deauth")
@@ -114,7 +174,7 @@ pub async fn run_deauth(
 
     cmd.arg(interface)
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
     let output = match cmd.output().await {
@@ -130,14 +190,25 @@ pub async fn run_deauth(
 
     if !output.status.success() {
         let raw_stderr = String::from_utf8_lossy(&output.stderr);
-        let stderr =
-            validate::sanitize_display_string(validate::truncate_utf8(&raw_stderr, MAX_STDERR_LEN));
+        let raw_stdout = String::from_utf8_lossy(&output.stdout);
+        let combined = if raw_stdout.trim().is_empty() {
+            raw_stderr
+        } else {
+            raw_stdout
+        };
+        let diag = validate::sanitize_display_string(validate::truncate_utf8(
+            &combined,
+            MAX_STDERR_LEN,
+        ));
         let status = output.status.code().unwrap_or(UNKNOWN_EXIT_STATUS);
-        let msg = format!("aireplay-ng failed (status {status}): {stderr}");
+        let msg = format!("aireplay-ng failed (status {status}): {diag}");
         if tx.try_send(AppEvent::Error(msg)).is_err() {
             tracing::warn!("event channel full, dropping aireplay error event");
         }
-        return Err(AireplayError::Failed { status, stderr });
+        return Err(AireplayError::Failed {
+            status,
+            output: diag,
+        });
     }
 
     if tx
@@ -170,8 +241,10 @@ mod tests {
     fn broadcast_bssid_accessor() {
         let target = DeauthTarget::Broadcast {
             bssid: "AA:BB:CC:DD:EE:FF".into(),
+            channel: 6,
         };
         assert_eq!(target.bssid(), "AA:BB:CC:DD:EE:FF");
+        assert_eq!(target.channel(), 6);
     }
 
     #[test]
@@ -179,8 +252,10 @@ mod tests {
         let target = DeauthTarget::Targeted {
             bssid: "AA:BB:CC:DD:EE:FF".into(),
             client: "11:22:33:44:55:66".into(),
+            channel: 36,
         };
         assert_eq!(target.bssid(), "AA:BB:CC:DD:EE:FF");
+        assert_eq!(target.channel(), 36);
     }
 
     #[tokio::test]
@@ -188,6 +263,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let target = DeauthTarget::Broadcast {
             bssid: "INVALID".into(),
+            channel: 6,
         };
         let result = run_deauth(&target, "wlan0mon", 5, &tx).await;
         assert!(matches!(result, Err(AireplayError::InvalidArgument(_))));
@@ -199,6 +275,7 @@ mod tests {
         let target = DeauthTarget::Targeted {
             bssid: "AA:BB:CC:DD:EE:FF".into(),
             client: "BAD-MAC".into(),
+            channel: 6,
         };
         let result = run_deauth(&target, "wlan0mon", 5, &tx).await;
         assert!(matches!(result, Err(AireplayError::InvalidArgument(_))));
@@ -209,22 +286,31 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let target = DeauthTarget::Broadcast {
             bssid: "AA:BB:CC:DD:EE:FF".into(),
+            channel: 6,
         };
         let result = run_deauth(&target, "rm -rf /", 5, &tx).await;
         assert!(matches!(result, Err(AireplayError::InvalidArgument(_))));
     }
 
     #[tokio::test]
-    async fn spawn_failure_emits_error_event() {
-        let (tx, mut rx) = mpsc::channel(8);
+    async fn rejects_invalid_channel() {
+        let (tx, _rx) = mpsc::channel(8);
         let target = DeauthTarget::Broadcast {
             bssid: "AA:BB:CC:DD:EE:FF".into(),
+            channel: 0,
         };
         let result = run_deauth(&target, "wlan0mon", 5, &tx).await;
-        assert!(result.is_err());
+        assert!(matches!(result, Err(AireplayError::InvalidArgument(_))));
+    }
 
-        if let Ok(event) = rx.try_recv() {
-            assert!(matches!(event, AppEvent::Error(_)));
-        }
+    #[tokio::test]
+    async fn channel_set_failure_returns_error() {
+        let (tx, _rx) = mpsc::channel(8);
+        let target = DeauthTarget::Broadcast {
+            bssid: "AA:BB:CC:DD:EE:FF".into(),
+            channel: 6,
+        };
+        let result = run_deauth(&target, "wlan0mon", 5, &tx).await;
+        assert!(matches!(result, Err(AireplayError::ChannelSet { .. })));
     }
 }

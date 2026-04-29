@@ -148,12 +148,14 @@ fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
             let target = match modal.selected {
                 0 => DeauthTarget::Broadcast {
                     bssid: modal.bssid.clone(),
+                    channel: modal.channel,
                 },
                 n => {
                     if let Some((client_mac, _)) = modal.clients.get(n - 1) {
                         DeauthTarget::Targeted {
                             bssid: modal.bssid.clone(),
                             client: client_mac.clone(),
+                            channel: modal.channel,
                         }
                     } else {
                         dash.modal = None;
@@ -323,7 +325,9 @@ fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) {
         .into_iter()
         .filter(|(_, ap)| dash.filter.matches(ap))
         .nth(dash.selected_ap());
-    if let Some((_, ap)) = ap {
+    if let Some((_, ap)) = ap
+        && ap.channel > 0
+    {
         let mut clients: Vec<(String, i32)> = ap
             .clients
             .values()
@@ -332,6 +336,7 @@ fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) {
         clients.sort_by_key(|&(_, power)| Reverse(power));
         dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
             bssid: ap.bssid.clone(),
+            channel: ap.channel,
             clients,
             selected: 0,
         }));
