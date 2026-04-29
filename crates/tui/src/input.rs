@@ -169,6 +169,7 @@ fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
 }
 
 const FILTER_ROW_COUNT: usize = 2;
+const EVENT_PAGE_SIZE: usize = 5;
 
 fn handle_filter_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
     let Some(Modal::Filter { selected }) = &mut dash.modal else {
@@ -219,7 +220,11 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
         };
     }
 
-    let ap_count = state.access_points.len();
+    let ap_count = state
+        .access_points
+        .values()
+        .filter(|ap| dash.filter.matches(ap))
+        .count();
 
     match key {
         KeyCode::Char('q') => Outcome::Quit,
@@ -234,7 +239,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
         KeyCode::Up | KeyCode::Char('k') => {
             match dash.focus {
                 FocusPane::ApList => {
-                    dash.selected_ap = dash.selected_ap.saturating_sub(1);
+                    dash.select_ap(dash.selected_ap().saturating_sub(1));
                 }
                 FocusPane::EventLog => {
                     dash.event_scroll = dash.event_scroll.saturating_sub(1);
@@ -247,7 +252,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             match dash.focus {
                 FocusPane::ApList => {
                     let max = ap_count.saturating_sub(1);
-                    dash.selected_ap = dash.selected_ap.saturating_add(1).min(max);
+                    dash.select_ap(dash.selected_ap().saturating_add(1).min(max));
                 }
                 FocusPane::EventLog => {
                     dash.event_scroll = dash.event_scroll.saturating_add(1);
@@ -256,15 +261,27 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             }
             Outcome::Continue
         }
+        KeyCode::PageUp => {
+            if dash.focus == FocusPane::EventLog {
+                dash.event_scroll = dash.event_scroll.saturating_sub(EVENT_PAGE_SIZE);
+            }
+            Outcome::Continue
+        }
+        KeyCode::PageDown => {
+            if dash.focus == FocusPane::EventLog {
+                dash.event_scroll = dash.event_scroll.saturating_add(EVENT_PAGE_SIZE);
+            }
+            Outcome::Continue
+        }
         KeyCode::Char('g') => {
             if dash.focus == FocusPane::ApList {
-                dash.selected_ap = 0;
+                dash.select_ap(0);
             }
             Outcome::Continue
         }
         KeyCode::Char('G') => {
             if dash.focus == FocusPane::ApList {
-                dash.selected_ap = ap_count.saturating_sub(1);
+                dash.select_ap(ap_count.saturating_sub(1));
             }
             Outcome::Continue
         }
@@ -275,24 +292,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         KeyCode::Char('d') => {
-            if dash.interface_name.is_some()
-                && (dash.focus == FocusPane::ApList || dash.focus == FocusPane::Detail)
-            {
-                let sorted = state.sorted_aps(dash.sort);
-                if let Some(&(_, ap)) = sorted.get(dash.selected_ap) {
-                    let mut clients: Vec<(String, i32)> = ap
-                        .clients
-                        .values()
-                        .map(|c| (c.mac.clone(), c.power))
-                        .collect();
-                    clients.sort_by_key(|&(_, power)| Reverse(power));
-                    dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
-                        bssid: ap.bssid.clone(),
-                        clients,
-                        selected: 0,
-                    }));
-                }
-            }
+            open_deauth_modal(dash, state);
             Outcome::Continue
         }
         KeyCode::Char('f') => {
@@ -304,5 +304,30 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         _ => Outcome::Continue,
+    }
+}
+
+fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) {
+    if dash.interface_name.is_none() || !matches!(dash.focus, FocusPane::ApList | FocusPane::Detail)
+    {
+        return;
+    }
+    let ap = state
+        .sorted_aps(dash.sort)
+        .into_iter()
+        .filter(|(_, ap)| dash.filter.matches(ap))
+        .nth(dash.selected_ap());
+    if let Some((_, ap)) = ap {
+        let mut clients: Vec<(String, i32)> = ap
+            .clients
+            .values()
+            .map(|c| (c.mac.clone(), c.power))
+            .collect();
+        clients.sort_by_key(|&(_, power)| Reverse(power));
+        dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
+            bssid: ap.bssid.clone(),
+            clients,
+            selected: 0,
+        }));
     }
 }

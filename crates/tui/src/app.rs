@@ -7,6 +7,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::prelude::*;
+use ratatui::widgets::TableState;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use veilbreak_core::aireplay;
@@ -67,8 +68,6 @@ pub enum SetupScreen {
 pub struct DashboardState {
     /// Which pane currently has keyboard focus.
     pub focus: FocusPane,
-    /// Index of the selected AP in the list.
-    pub selected_ap: usize,
     /// Current sort column for the AP list.
     pub sort: SortColumn,
     /// Name of the monitoring interface, if active.
@@ -83,6 +82,20 @@ pub struct DashboardState {
     pub modal: Option<Modal>,
     /// Active AP list filters.
     pub filter: FilterState,
+    /// Sole source of truth for AP selection index and table viewport offset.
+    pub table_state: TableState,
+}
+
+impl DashboardState {
+    /// Returns the currently selected AP index (0 if nothing is selected).
+    pub fn selected_ap(&self) -> usize {
+        self.table_state.selected().unwrap_or(0)
+    }
+
+    /// Sets the selected AP index.
+    pub const fn select_ap(&mut self, index: usize) {
+        self.table_state.select(Some(index));
+    }
 }
 
 /// State for the deauth target selection modal.
@@ -226,7 +239,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
 
     loop {
         deauth_guard.prune();
-        terminal.draw(|frame| ui::draw(frame, &screen, &state, tick))?;
+        terminal.draw(|frame| ui::draw(frame, &mut screen, &state, tick))?;
 
         if let Some(new_screen) = resolve_detect_task(&mut detect_task).await {
             screen = new_screen;

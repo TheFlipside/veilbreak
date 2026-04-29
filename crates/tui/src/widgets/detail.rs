@@ -21,7 +21,7 @@ pub fn draw(frame: &mut Frame, area: Rect, sorted: &[(&str, &AccessPoint)], dash
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    let selected = sorted.get(dash.selected_ap).map(|&(_, ap)| ap);
+    let selected = sorted.get(dash.selected_ap()).map(|&(_, ap)| ap);
 
     let Some(ap) = selected else {
         let content = Paragraph::new("  (no AP selected)")

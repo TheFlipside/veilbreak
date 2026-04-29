@@ -199,6 +199,7 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
 
 const HELP_ENTRIES: &[(&str, &str)] = &[
     ("\u{2191}\u{2193} / j k", "Navigate list"),
+    ("PgUp / PgDn", "Page scroll (events pane)"),
     ("Tab / Shift+Tab", "Cycle focus pane"),
     ("Enter", "Select AP / confirm"),
     ("d", "Deauth selected AP"),

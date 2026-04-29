@@ -9,7 +9,7 @@ use crate::app::Screen;
 use crate::widgets;
 
 /// Draws the current screen into the terminal frame.
-pub fn draw(frame: &mut Frame, screen: &Screen, state: &AppState, tick: u8) {
+pub fn draw(frame: &mut Frame, screen: &mut Screen, state: &AppState, tick: u8) {
     match screen {
         Screen::Loading => draw_loading(frame, tick),
         Screen::Setup(setup) => widgets::modal::draw_setup(frame, setup),
@@ -32,7 +32,7 @@ fn draw_loading(frame: &mut Frame, tick: u8) {
     frame.render_widget(text, inner);
 }
 
-fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &AppState) {
+fn draw_dashboard(frame: &mut Frame, dash: &mut crate::app::DashboardState, state: &AppState) {
     use crate::app::Modal;
 
     let area = frame.area();
@@ -55,6 +55,14 @@ fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &
         .into_iter()
         .filter(|(_, ap)| dash.filter.matches(ap))
         .collect();
+
+    if filtered.is_empty() {
+        dash.table_state.select(None);
+    } else {
+        let clamped = dash.selected_ap().min(filtered.len() - 1);
+        dash.select_ap(clamped);
+    }
+
     widgets::ap_list::draw(frame, body[0], &filtered, dash);
     widgets::detail::draw(frame, body[1], &filtered, dash);
     widgets::events::draw(frame, vertical[2], state, dash);
