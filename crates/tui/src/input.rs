@@ -169,7 +169,7 @@ fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
 }
 
 const FILTER_ROW_COUNT: usize = 2;
-const EVENT_PAGE_SIZE: usize = 5;
+const PAGE_SIZE: usize = 5;
 
 fn handle_filter_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
     let Some(Modal::Filter { selected }) = &mut dash.modal else {
@@ -211,6 +211,31 @@ fn handle_help_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
     }
 }
 
+fn scroll_up(dash: &mut DashboardState, step: usize) {
+    match dash.focus {
+        FocusPane::ApList => {
+            dash.select_ap(dash.selected_ap().saturating_sub(step));
+        }
+        FocusPane::EventLog => {
+            dash.event_scroll = dash.event_scroll.saturating_sub(step);
+        }
+        FocusPane::Detail => {}
+    }
+}
+
+fn scroll_down(dash: &mut DashboardState, ap_count: usize, step: usize) {
+    match dash.focus {
+        FocusPane::ApList => {
+            let max = ap_count.saturating_sub(1);
+            dash.select_ap(dash.selected_ap().saturating_add(step).min(max));
+        }
+        FocusPane::EventLog => {
+            dash.event_scroll = dash.event_scroll.saturating_add(step);
+        }
+        FocusPane::Detail => {}
+    }
+}
+
 fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCode) -> Outcome {
     if let Some(modal) = &dash.modal {
         return match modal {
@@ -237,40 +262,19 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             Outcome::Continue
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            match dash.focus {
-                FocusPane::ApList => {
-                    dash.select_ap(dash.selected_ap().saturating_sub(1));
-                }
-                FocusPane::EventLog => {
-                    dash.event_scroll = dash.event_scroll.saturating_sub(1);
-                }
-                FocusPane::Detail => {}
-            }
+            scroll_up(dash, 1);
             Outcome::Continue
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            match dash.focus {
-                FocusPane::ApList => {
-                    let max = ap_count.saturating_sub(1);
-                    dash.select_ap(dash.selected_ap().saturating_add(1).min(max));
-                }
-                FocusPane::EventLog => {
-                    dash.event_scroll = dash.event_scroll.saturating_add(1);
-                }
-                FocusPane::Detail => {}
-            }
+            scroll_down(dash, ap_count, 1);
             Outcome::Continue
         }
         KeyCode::PageUp => {
-            if dash.focus == FocusPane::EventLog {
-                dash.event_scroll = dash.event_scroll.saturating_sub(EVENT_PAGE_SIZE);
-            }
+            scroll_up(dash, PAGE_SIZE);
             Outcome::Continue
         }
         KeyCode::PageDown => {
-            if dash.focus == FocusPane::EventLog {
-                dash.event_scroll = dash.event_scroll.saturating_add(EVENT_PAGE_SIZE);
-            }
+            scroll_down(dash, ap_count, PAGE_SIZE);
             Outcome::Continue
         }
         KeyCode::Char('g') => {

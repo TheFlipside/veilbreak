@@ -129,7 +129,7 @@ To replay a previously captured pcap file (no root required, no live capture):
 | Key                        | Action                                                            |
 |----------------------------|-------------------------------------------------------------------|
 | `Up` / `Down` or `j` / `k` | Navigate AP list or scroll event log                              |
-| `PgUp` / `PgDn`            | Page scroll (events pane)                                         |
+| `PgUp` / `PgDn`            | Page scroll (AP list & events pane)                               |
 | `Tab` / `Shift+Tab`        | Cycle focus pane (AP list, detail, event log)                     |
 | `Enter`                    | Select AP / confirm action                                        |
 | `s`                        | Cycle sort column (Power > Channel > Clients > Beacons > BSSID)   |
