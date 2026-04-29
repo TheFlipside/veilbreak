@@ -18,6 +18,83 @@ use crate::event::AppEvent;
 use crate::state::{AccessPoint, Client};
 use crate::validate;
 
+/// Wi-Fi frequency band for airodump-ng's `--band` flag.
+///
+/// Some drivers (notably mt76x2u) silently fall back to 2.4 GHz when
+/// `--band abg` is requested. Explicit single-band selection avoids this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Band {
+    /// 2.4 GHz only (`--band bg`).
+    #[default]
+    Bg,
+    /// 5 GHz only (`--band a`).
+    A,
+    /// Both bands (`--band abg`). Unreliable on some drivers.
+    Abg,
+}
+
+impl Band {
+    /// Returns the argument string passed to `airodump-ng --band`.
+    #[must_use]
+    pub const fn as_arg(self) -> &'static str {
+        match self {
+            Self::Bg => "bg",
+            Self::A => "a",
+            Self::Abg => "abg",
+        }
+    }
+
+    /// Human-readable label for display.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Bg => "2.4 GHz",
+            Self::A => "5 GHz",
+            Self::Abg => "Both (abg)",
+        }
+    }
+
+    /// Cycle to the next band value.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Bg => Self::A,
+            Self::A => Self::Abg,
+            Self::Abg => Self::Bg,
+        }
+    }
+
+    /// Cycle to the previous band value.
+    #[must_use]
+    pub const fn prev(self) -> Self {
+        match self {
+            Self::Bg => Self::Abg,
+            Self::A => Self::Bg,
+            Self::Abg => Self::A,
+        }
+    }
+}
+
+impl std::fmt::Display for Band {
+    /// Formats as the CLI argument form (`bg`, `a`, `abg`), not the human label.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_arg())
+    }
+}
+
+impl std::str::FromStr for Band {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bg" => Ok(Self::Bg),
+            "a" => Ok(Self::A),
+            "abg" => Ok(Self::Abg),
+            _ => Err(format!("invalid band '{s}': expected bg, a, or abg")),
+        }
+    }
+}
+
 /// Parsed result from a single CSV read cycle.
 #[derive(Debug, Default)]
 pub struct CsvSnapshot {
@@ -206,6 +283,7 @@ impl AirodumpController {
     pub fn spawn(
         interface: &str,
         output_dir: &Path,
+        band: Band,
         tx: mpsc::Sender<AppEvent>,
     ) -> Result<Self, AirodumpError> {
         if !validate::is_valid_interface_name(interface) {
@@ -230,6 +308,8 @@ impl AirodumpController {
             .arg(&prefix)
             .arg("--output-format")
             .arg("pcap,csv")
+            .arg("--band")
+            .arg(band.as_arg())
             .arg(interface)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())

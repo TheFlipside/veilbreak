@@ -14,6 +14,7 @@ pub mod state;
 pub mod tshark;
 pub mod validate;
 
+pub use airodump::Band;
 pub use error::Error;
 pub use event::AppEvent;
 pub use state::{AppState, SortColumn};

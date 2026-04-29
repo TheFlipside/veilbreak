@@ -25,6 +25,10 @@ struct Cli {
     /// Replay a captured pcap instead of live capture.
     #[arg(long, value_name = "PCAP")]
     replay: Option<String>,
+    /// Wi-Fi band for scanning: bg (2.4 GHz), a (5 GHz), or abg (both).
+    /// Skips the band selection prompt when specified.
+    #[arg(long, value_name = "BAND")]
+    band: Option<veilbreak_core::Band>,
     /// Directory for session output (captures, logs). Created automatically if omitted.
     #[arg(long, value_name = "DIR")]
     output_dir: Option<PathBuf>,
@@ -87,13 +91,17 @@ fn init_logging(output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn run_tui(replay: Option<String>, output_dir: &Path) -> Result<()> {
+async fn run_tui(
+    replay: Option<String>,
+    band: Option<veilbreak_core::Band>,
+    output_dir: &Path,
+) -> Result<()> {
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = app::run(&mut terminal, replay, output_dir).await;
+    let result = app::run(&mut terminal, replay, band, output_dir).await;
 
     let _ = terminal.show_cursor();
     result
@@ -113,7 +121,7 @@ async fn main() -> Result<()> {
     }));
 
     enable_raw_mode()?;
-    let result = run_tui(cli.replay, &output_dir).await;
+    let result = run_tui(cli.replay, cli.band, &output_dir).await;
     restore_terminal();
 
     result

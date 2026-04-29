@@ -6,6 +6,8 @@ use crossterm::event::KeyCode;
 use veilbreak_core::AppState;
 use veilbreak_core::aireplay::DeauthTarget;
 
+use veilbreak_core::Band;
+
 use crate::app::{DashboardState, FocusPane, Modal, Screen, SetupScreen};
 
 /// What the app loop should do after processing a key.
@@ -52,6 +54,7 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
         SetupScreen::InterfaceSelect {
             interfaces,
             selected,
+            cli_band,
         } => match key {
             KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
             KeyCode::Up | KeyCode::Char('k') => {
@@ -69,17 +72,50 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
                     return SetupOutcome::Continue;
                 };
                 let dual = interfaces.iter().filter(|i| i.monitor_capable).count() > 1;
-                SetupOutcome::Transition(Screen::Setup(SetupScreen::ModeConfirm {
-                    interface: iface,
-                    dual_card: dual,
-                }))
+                if let Some(band) = *cli_band {
+                    SetupOutcome::Transition(Screen::Setup(SetupScreen::ModeConfirm {
+                        interface: iface,
+                        dual_card: dual,
+                        band,
+                    }))
+                } else {
+                    SetupOutcome::Transition(Screen::Setup(SetupScreen::BandSelect {
+                        interface: iface,
+                        dual_card: dual,
+                        selected: Band::default(),
+                    }))
+                }
             }
             _ => SetupOutcome::Continue,
         },
-        SetupScreen::ModeConfirm { interface, .. } => match key {
+        SetupScreen::BandSelect {
+            interface,
+            dual_card,
+            selected,
+        } => match key {
+            KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
+            KeyCode::Up | KeyCode::Char('k') => {
+                *selected = selected.prev();
+                SetupOutcome::Continue
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                *selected = selected.next();
+                SetupOutcome::Continue
+            }
+            KeyCode::Enter => SetupOutcome::Transition(Screen::Setup(SetupScreen::ModeConfirm {
+                interface: interface.clone(),
+                dual_card: *dual_card,
+                band: *selected,
+            })),
+            _ => SetupOutcome::Continue,
+        },
+        SetupScreen::ModeConfirm {
+            interface, band, ..
+        } => match key {
             KeyCode::Enter => {
                 let dash = DashboardState {
                     interface_name: Some(interface.name.clone()),
+                    band: *band,
                     ..DashboardState::default()
                 };
                 SetupOutcome::Transition(Screen::Dashboard(dash))

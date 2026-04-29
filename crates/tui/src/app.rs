@@ -14,7 +14,7 @@ use veilbreak_core::airodump::AirodumpController;
 use veilbreak_core::interface::WirelessInterface;
 use veilbreak_core::persist;
 use veilbreak_core::tshark::TsharkController;
-use veilbreak_core::{AppEvent, AppState, SortColumn};
+use veilbreak_core::{AppEvent, AppState, Band, SortColumn};
 
 use crate::input;
 use crate::ui;
@@ -39,6 +39,17 @@ pub enum SetupScreen {
         interfaces: Vec<WirelessInterface>,
         /// Currently highlighted index.
         selected: usize,
+        /// Pre-selected band from CLI flag; skips the band prompt when `Some`.
+        cli_band: Option<Band>,
+    },
+    /// User picks the Wi-Fi band for scanning.
+    BandSelect {
+        /// The chosen interface from the previous step.
+        interface: WirelessInterface,
+        /// Whether a second monitor-capable card was detected.
+        dual_card: bool,
+        /// Currently highlighted band.
+        selected: Band,
     },
     /// Confirm the monitoring mode before proceeding.
     ModeConfirm {
@@ -46,6 +57,8 @@ pub enum SetupScreen {
         interface: WirelessInterface,
         /// Whether a second monitor-capable card was detected.
         dual_card: bool,
+        /// The selected Wi-Fi band.
+        band: Band,
     },
 }
 
@@ -64,6 +77,8 @@ pub struct DashboardState {
     pub channel: Option<u32>,
     /// Scroll offset in the event log.
     pub event_scroll: usize,
+    /// Wi-Fi band passed to airodump-ng.
+    pub band: Band,
     /// Active modal overlay, if any.
     pub modal: Option<Modal>,
     /// Active AP list filters.
@@ -193,6 +208,7 @@ impl FocusPane {
 pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     replay: Option<String>,
+    band: Option<Band>,
     output_dir: &Path,
 ) -> Result<()> {
     let mut state = AppState::default();
@@ -205,7 +221,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     let mut deauth_guard = DeauthGuard::default();
     let mut reveal_log = open_reveal_log(output_dir);
 
-    let (mut screen, mut detect_task) = initial_screen_and_task(replay.as_deref());
+    let (mut screen, mut detect_task) = initial_screen_and_task(replay.as_deref(), band);
     let mut tick: u8 = 0;
 
     loop {
@@ -287,7 +303,7 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                 {
                     session_spawn_attempted = true;
                     try_spawn_session(
-                        iface_name, output_dir, tx.clone(),
+                        iface_name, dash.band, output_dir, tx.clone(),
                         &mut state, &mut airodump_ctrl, &mut tshark_ctrl,
                     );
                 }
@@ -312,11 +328,14 @@ async fn resolve_detect_task(task: &mut Option<DetectGuard>) -> Option<Screen> {
     }))
 }
 
-fn initial_screen_and_task(replay: Option<&str>) -> (Screen, Option<DetectGuard>) {
+fn initial_screen_and_task(
+    replay: Option<&str>,
+    cli_band: Option<Band>,
+) -> (Screen, Option<DetectGuard>) {
     if replay.is_some() {
         (Screen::Dashboard(DashboardState::default()), None)
     } else {
-        let handle = tokio::spawn(detect_initial_screen());
+        let handle = tokio::spawn(detect_initial_screen(cli_band));
         (Screen::Loading, Some(DetectGuard(Some(handle))))
     }
 }
@@ -342,11 +361,12 @@ impl Drop for DetectGuard {
     }
 }
 
-async fn detect_initial_screen() -> Screen {
+async fn detect_initial_screen(cli_band: Option<Band>) -> Screen {
     match veilbreak_core::interface::detect_interfaces().await {
         Ok(ifaces) if !ifaces.is_empty() => Screen::Setup(SetupScreen::InterfaceSelect {
             interfaces: ifaces,
             selected: 0,
+            cli_band,
         }),
         Ok(_empty) => Screen::Dashboard(DashboardState::default()),
         Err(e) => {
@@ -367,15 +387,16 @@ async fn poll_terminal_event() -> Result<()> {
 
 fn try_spawn_session(
     interface: &str,
+    band: Band,
     output_dir: &Path,
     tx: mpsc::Sender<AppEvent>,
     state: &mut AppState,
     airodump_ctrl: &mut Option<AirodumpController>,
     tshark_ctrl: &mut Option<TsharkController>,
 ) {
-    match spawn_session(interface, output_dir, tx) {
+    match spawn_session(interface, band, output_dir, tx) {
         Ok((ac, tc)) => {
-            state.log_event(format!("started capture on {interface}"));
+            state.log_event(format!("started capture on {interface} ({band})"));
             *airodump_ctrl = Some(ac);
             *tshark_ctrl = Some(tc);
         }
@@ -388,10 +409,11 @@ fn try_spawn_session(
 
 fn spawn_session(
     interface: &str,
+    band: Band,
     output_dir: &Path,
     tx: mpsc::Sender<AppEvent>,
 ) -> Result<(AirodumpController, TsharkController)> {
-    let airodump = AirodumpController::spawn(interface, output_dir, tx.clone())?;
+    let airodump = AirodumpController::spawn(interface, output_dir, band, tx.clone())?;
     let pcap = airodump.pcap_path().to_owned();
     let tshark = TsharkController::spawn(pcap, tx);
     Ok((airodump, tshark))

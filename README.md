@@ -114,12 +114,13 @@ To replay a previously captured pcap file (no root required, no live capture):
 
 ## CLI Flags
 
-| Flag                 | Description                                                                                                                                                                      |
-|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--replay <PCAP>`    | Replay a captured pcap file instead of starting a live capture session. No root or wireless card required.                                                                       |
-| `--output-dir <DIR>` | Use an existing directory for session output (captures, logs, `revealed.jsonl`). The directory must already exist. When omitted, a randomized directory is created under `/tmp`. |
-| `--help`             | Print usage information.                                                                                                                                                         |
-| `--version`          | Print version.                                                                                                                                                                   |
+| Flag                 | Description                                                                                                                                     |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--replay <PCAP>`    | Replay a captured pcap file instead of starting a live capture session. No root or wireless card required.                                      |
+| `--band <BAND>`      | Wi-Fi band: `bg` (2.4 GHz), `a` (5 GHz), or `abg` (both). Defaults to `bg`. Skips the band prompt. `abg` is unreliable on some drivers.         |
+| `--output-dir <DIR>` | Use an existing directory for session output (captures, logs, `revealed.jsonl`). Must already exist. Defaults to a randomized dir in `/tmp`.    |
+| `--help`             | Print usage information.                                                                                                                        |
+| `--version`          | Print version.                                                                                                                                  |
 
 ## Keybinds
 

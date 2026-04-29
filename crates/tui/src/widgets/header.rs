@@ -21,8 +21,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
     let cap_size = format_bytes(state.capture_size);
     let ap_count = state.access_points.len();
 
+    let band_label = dash.band.label();
     let text = format!(
-        " iface: {iface}  ch: {ch}  capture: {cap_size}  APs: {ap_count}  elapsed: {mins:02}:{secs:02}",
+        " iface: {iface}  band: {band_label}  ch: {ch}  capture: {cap_size}  APs: {ap_count}  elapsed: {mins:02}:{secs:02}",
     );
 
     let header = Paragraph::new(text)

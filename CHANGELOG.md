@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `Band` enum in `core::airodump` with `Bg`, `A`, `Abg` variants and `as_arg()`, `label()`, `next()` accessors
+- `--band <BAND>` CLI flag: select Wi-Fi band (`bg`, `a`, `abg`) without interactive prompt; defaults to `bg` (2.4 GHz)
+- `SetupScreen::BandSelect` step in setup flow: interactive band selection between interface pick and mode confirm
+- Band shown in header bar and mode confirmation screen
 - Help overlay (`?` key): full-screen keybind reference modal with all dashboard shortcuts
 - Filter modal (`f` key): toggle hidden-only filter and band filter (All / 2.4 GHz / 5 GHz) for the AP list
 - `Modal` enum generalizing deauth, filter, and help overlays (replaces `Option<DeauthModal>`)
@@ -108,6 +112,9 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- `AirodumpController::spawn()` accepts `Band` parameter and passes `--band` flag to airodump-ng
+- `SetupScreen::InterfaceSelect` carries `cli_band: Option<Band>` to skip band prompt when CLI flag is set
+- `SetupScreen::ModeConfirm` carries `band: Band` for forwarding to `DashboardState`
 - `app::run()` refactored: initial screen detection, session spawn, and deauth dispatch extracted into helpers to stay within the 100-line clippy limit
 - `_airodump_ctrl` renamed to `airodump_ctrl` (no longer underscore-prefixed — now actively passed to `try_spawn_session`)
 - `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
