@@ -7,6 +7,8 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::prelude::*;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use veilbreak_core::aireplay;
 use veilbreak_core::airodump::AirodumpController;
 use veilbreak_core::interface::WirelessInterface;
 use veilbreak_core::tshark::TsharkController;
@@ -58,6 +60,19 @@ pub struct DashboardState {
     pub channel: Option<u32>,
     /// Scroll offset in the event log.
     pub event_scroll: usize,
+    /// Active deauth modal overlay, if any.
+    pub modal: Option<DeauthModal>,
+}
+
+/// State for the deauth target selection modal.
+#[derive(Debug)]
+pub struct DeauthModal {
+    /// BSSID of the target AP.
+    pub bssid: String,
+    /// Clients associated with the target AP, sorted by signal strength (strongest first).
+    pub clients: Vec<(String, i32)>,
+    /// Selected index: 0 = broadcast, 1..N = targeted client at `clients[N-1]`.
+    pub selected: usize,
 }
 
 /// Which pane currently has keyboard focus.
@@ -106,28 +121,15 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     // Channel capacity sized for burst headroom during rapid CSV re-parses.
     let (tx, mut rx) = mpsc::channel::<AppEvent>(256);
 
-    #[allow(clippy::collection_is_never_read)] // held for Drop semantics
-    let mut _airodump_ctrl: Option<AirodumpController> = None;
+    let mut airodump_ctrl: Option<AirodumpController> = None;
     let mut tshark_ctrl: Option<TsharkController> = None;
     let mut session_spawn_attempted = false;
+    let mut deauth_guard = DeauthGuard::default();
 
-    let mut screen = if replay.is_some() {
-        Screen::Dashboard(DashboardState::default())
-    } else {
-        match veilbreak_core::interface::detect_interfaces().await {
-            Ok(ifaces) if !ifaces.is_empty() => Screen::Setup(SetupScreen::InterfaceSelect {
-                interfaces: ifaces,
-                selected: 0,
-            }),
-            Ok(_empty) => Screen::Dashboard(DashboardState::default()),
-            Err(e) => {
-                tracing::warn!("interface detection failed, skipping setup: {e}");
-                Screen::Dashboard(DashboardState::default())
-            }
-        }
-    };
+    let mut screen = detect_initial_screen(replay).await;
 
     loop {
+        deauth_guard.prune();
         terminal.draw(|frame| ui::draw(frame, &screen, &state))?;
 
         tokio::select! {
@@ -176,6 +178,19 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                         match input::handle_key(&mut screen, &state, key.code) {
                             input::Outcome::Continue => {}
                             input::Outcome::Quit => return Ok(()),
+                            input::Outcome::Deauth(target) => {
+                                if let Screen::Dashboard(dash) = &screen
+                                    && let Some(iface) = dash.interface_name.clone()
+                                {
+                                    dispatch_deauth(
+                                        target,
+                                        iface,
+                                        &tx,
+                                        &mut state,
+                                        &mut deauth_guard,
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -184,19 +199,29 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                     && let Some(iface_name) = &dash.interface_name
                 {
                     session_spawn_attempted = true;
-                    match spawn_session(iface_name, output_dir, tx.clone()) {
-                        Ok((ac, tc)) => {
-                            state.log_event(format!("started capture on {iface_name}"));
-                            _airodump_ctrl = Some(ac);
-                            tshark_ctrl = Some(tc);
-                        }
-                        Err(e) => {
-                            tracing::error!("failed to start capture session: {e}");
-                            state.log_event(format!("error: {e}"));
-                        }
-                    }
+                    try_spawn_session(
+                        iface_name, output_dir, tx.clone(),
+                        &mut state, &mut airodump_ctrl, &mut tshark_ctrl,
+                    );
                 }
             }
+        }
+    }
+}
+
+async fn detect_initial_screen(replay: Option<String>) -> Screen {
+    if replay.is_some() {
+        return Screen::Dashboard(DashboardState::default());
+    }
+    match veilbreak_core::interface::detect_interfaces().await {
+        Ok(ifaces) if !ifaces.is_empty() => Screen::Setup(SetupScreen::InterfaceSelect {
+            interfaces: ifaces,
+            selected: 0,
+        }),
+        Ok(_empty) => Screen::Dashboard(DashboardState::default()),
+        Err(e) => {
+            tracing::warn!("interface detection failed, skipping setup: {e}");
+            Screen::Dashboard(DashboardState::default())
         }
     }
 }
@@ -210,6 +235,27 @@ async fn poll_terminal_event() -> Result<()> {
     }
 }
 
+fn try_spawn_session(
+    interface: &str,
+    output_dir: &Path,
+    tx: mpsc::Sender<AppEvent>,
+    state: &mut AppState,
+    airodump_ctrl: &mut Option<AirodumpController>,
+    tshark_ctrl: &mut Option<TsharkController>,
+) {
+    match spawn_session(interface, output_dir, tx) {
+        Ok((ac, tc)) => {
+            state.log_event(format!("started capture on {interface}"));
+            *airodump_ctrl = Some(ac);
+            *tshark_ctrl = Some(tc);
+        }
+        Err(e) => {
+            tracing::error!("failed to start capture session: {e}");
+            state.log_event(format!("error: {e}"));
+        }
+    }
+}
+
 fn spawn_session(
     interface: &str,
     output_dir: &Path,
@@ -219,6 +265,61 @@ fn spawn_session(
     let pcap = airodump.pcap_path().to_owned();
     let tshark = TsharkController::spawn(pcap, tx);
     Ok((airodump, tshark))
+}
+
+const MAX_CONCURRENT_DEAUTHS: usize = 8;
+
+fn dispatch_deauth(
+    target: aireplay::DeauthTarget,
+    interface: String,
+    tx: &mpsc::Sender<AppEvent>,
+    state: &mut AppState,
+    guard: &mut DeauthGuard,
+) {
+    if guard.len() >= MAX_CONCURRENT_DEAUTHS {
+        state.log_event("too many active deauths, try again later".to_owned());
+        return;
+    }
+    state.log_event(format!("deauth started \u{2192} {}", target.bssid()));
+    let tx_deauth = tx.clone();
+    guard.push(tokio::spawn(async move {
+        if let Err(e) = aireplay::run_deauth(
+            &target,
+            &interface,
+            aireplay::DEFAULT_DEAUTH_COUNT,
+            &tx_deauth,
+        )
+        .await
+        {
+            tracing::error!("deauth failed: {e}");
+        }
+    }));
+}
+
+/// Owns deauth `JoinHandle`s and aborts them all on drop.
+#[derive(Default)]
+struct DeauthGuard(Vec<JoinHandle<()>>);
+
+impl DeauthGuard {
+    fn prune(&mut self) {
+        self.0.retain(|h| !h.is_finished());
+    }
+
+    fn push(&mut self, handle: JoinHandle<()>) {
+        self.0.push(handle);
+    }
+
+    const fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Drop for DeauthGuard {
+    fn drop(&mut self) {
+        for h in &self.0 {
+            h.abort();
+        }
+    }
 }
 
 const fn changes_hidden_set(event: &AppEvent) -> bool {

@@ -8,6 +8,9 @@ pub const BORDER: Style = Style::new().fg(Color::DarkGray);
 /// Border style for the focused pane.
 pub const BORDER_FOCUSED: Style = Style::new().fg(Color::Cyan);
 
+/// Border style for action modals with side effects (e.g. deauth).
+pub const BORDER_DANGER: Style = Style::new().fg(Color::Red);
+
 /// Header bar text.
 pub const HEADER: Style = Style::new().fg(Color::White);
 

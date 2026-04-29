@@ -1,9 +1,12 @@
 //! Key-to-action mapping for each screen.
 
+use std::cmp::Reverse;
+
 use crossterm::event::KeyCode;
 use veilbreak_core::AppState;
+use veilbreak_core::aireplay::DeauthTarget;
 
-use crate::app::{DashboardState, FocusPane, Screen, SetupScreen};
+use crate::app::{DashboardState, DeauthModal, FocusPane, Screen, SetupScreen};
 
 /// What the app loop should do after processing a key.
 #[must_use]
@@ -12,6 +15,8 @@ pub enum Outcome {
     Continue,
     /// Exit the application.
     Quit,
+    /// Launch a deauth job with the given target.
+    Deauth(DeauthTarget),
 }
 
 /// Internal outcome for setup screens that may trigger screen transitions.
@@ -81,7 +86,53 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
     }
 }
 
+fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
+    let Some(modal) = &mut dash.modal else {
+        return Outcome::Continue;
+    };
+
+    match key {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            dash.modal = None;
+            Outcome::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            modal.selected = modal.selected.saturating_sub(1);
+            Outcome::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            modal.selected = (modal.selected + 1).min(modal.clients.len());
+            Outcome::Continue
+        }
+        KeyCode::Enter => {
+            let target = match modal.selected {
+                0 => DeauthTarget::Broadcast {
+                    bssid: modal.bssid.clone(),
+                },
+                n => {
+                    if let Some((client_mac, _)) = modal.clients.get(n - 1) {
+                        DeauthTarget::Targeted {
+                            bssid: modal.bssid.clone(),
+                            client: client_mac.clone(),
+                        }
+                    } else {
+                        dash.modal = None;
+                        return Outcome::Continue;
+                    }
+                }
+            };
+            dash.modal = None;
+            Outcome::Deauth(target)
+        }
+        _ => Outcome::Continue,
+    }
+}
+
 fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCode) -> Outcome {
+    if dash.modal.is_some() {
+        return handle_deauth_modal_key(dash, key);
+    }
+
     let ap_count = state.access_points.len();
 
     match key {
@@ -134,6 +185,27 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
         KeyCode::Char('s') => {
             if dash.focus == FocusPane::ApList {
                 dash.sort = dash.sort.next();
+            }
+            Outcome::Continue
+        }
+        KeyCode::Char('d') => {
+            if dash.interface_name.is_some()
+                && (dash.focus == FocusPane::ApList || dash.focus == FocusPane::Detail)
+            {
+                let sorted = state.sorted_aps(dash.sort);
+                if let Some(&(_, ap)) = sorted.get(dash.selected_ap) {
+                    let mut clients: Vec<(String, i32)> = ap
+                        .clients
+                        .values()
+                        .map(|c| (c.mac.clone(), c.power))
+                        .collect();
+                    clients.sort_by_key(|&(_, power)| Reverse(power));
+                    dash.modal = Some(DeauthModal {
+                        bssid: ap.bssid.clone(),
+                        clients,
+                        selected: 0,
+                    });
+                }
             }
             Outcome::Continue
         }

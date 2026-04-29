@@ -36,4 +36,8 @@ fn draw_dashboard(frame: &mut Frame, dash: &crate::app::DashboardState, state: &
     widgets::detail::draw(frame, body[1], &sorted, dash);
     widgets::events::draw(frame, vertical[2], state, dash);
     widgets::keybinds::draw(frame, vertical[3], dash);
+
+    if let Some(modal) = &dash.modal {
+        widgets::modal::draw_deauth_modal(frame, modal);
+    }
 }

@@ -1,10 +1,10 @@
-//! Full-screen modal dialogs for the pre-session setup flow.
+//! Modal dialogs for the setup flow and runtime overlays (deauth target picker).
 
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use veilbreak_core::interface::WirelessInterface;
 
-use crate::app::SetupScreen;
+use crate::app::{DeauthModal, SetupScreen};
 use crate::theme;
 
 /// Draws the appropriate setup modal for the current setup step.
@@ -95,4 +95,66 @@ fn draw_mode_confirm(
 
     let content = Paragraph::new(text).block(block);
     frame.render_widget(content, modal);
+}
+
+/// Draws the deauth target selection modal as a centered overlay.
+pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
+    let area = frame.area();
+
+    let item_count = 1 + modal.clients.len();
+    let height = u16::try_from(item_count + 5)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let modal_area = centered_rect(50, height, area);
+
+    frame.render_widget(Clear, modal_area);
+
+    let block = Block::default()
+        .title(format!(" Deauth: {} ", modal.bssid))
+        .title_style(theme::TITLE)
+        .borders(Borders::ALL)
+        .border_style(theme::BORDER_DANGER);
+
+    let mut items: Vec<ListItem> = Vec::with_capacity(item_count + 1);
+
+    let broadcast_prefix = if modal.selected == 0 {
+        "\u{25b6} "
+    } else {
+        "  "
+    };
+    let broadcast_style = if modal.selected == 0 {
+        theme::SELECTED
+    } else {
+        Style::default()
+    };
+    items.push(
+        ListItem::new(format!("{broadcast_prefix}Broadcast (all clients)")).style(broadcast_style),
+    );
+
+    for (i, (mac, power)) in modal.clients.iter().enumerate() {
+        let idx = i + 1;
+        let prefix = if modal.selected == idx {
+            "\u{25b6} "
+        } else {
+            "  "
+        };
+        let style = if modal.selected == idx {
+            theme::SELECTED
+        } else {
+            Style::default()
+        };
+        items.push(ListItem::new(format!("{prefix}{mac}  {power} dBm")).style(style));
+    }
+
+    items.push(ListItem::new(""));
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw("  ["),
+        Span::styled("Enter", theme::KEYBIND_KEY),
+        Span::raw("] send  ["),
+        Span::styled("Esc", theme::KEYBIND_KEY),
+        Span::raw("] cancel"),
+    ])));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, modal_area);
 }

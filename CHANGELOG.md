@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `core::aireplay` module: spawns `aireplay-ng --deauth` for broadcast or targeted deauthentication, emits `DeauthComplete` on success and `AppEvent::Error` on failure
+- `DeauthTarget` enum with `Broadcast` and `Targeted` variants and `bssid()` accessor
+- `run_deauth()` async function with defense-in-depth validation of BSSID, client MAC, and interface name at the command boundary
+- `AireplayError::Failed` and `AireplayError::InvalidArgument` error variants
+- Deauth modal overlay: centered dialog with broadcast option and per-client targeted deauth, sorted by signal strength
+- `DeauthModal` struct on `DashboardState` for modal state management
+- `Outcome::Deauth(DeauthTarget)` variant for action dispatch from input to event loop
+- `d` key opens deauth modal from AP list and detail panes (requires active interface, no-op in replay mode)
+- Modal key handling: `↑`/`↓`/`j`/`k` navigation, `Enter` to send, `Esc`/`q` to cancel
+- `DeauthGuard` struct with `Drop` impl to abort all deauth `JoinHandle`s on any exit path
+- `BORDER_DANGER` theme style (red) for action modals with side effects
+- `DEFAULT_DEAUTH_COUNT` constant (5 frames), frame count clamped to [1, 128] with `tracing::warn` on clamping
+- 7 unit tests for frame count clamping, target accessors, validation rejection, and spawn failure handling in `core::aireplay`
 - `core::tshark` module: periodic tshark poll against airodump pcap, EK-JSON parser, `TsharkController` with 3-second poll loop and `HashSet`-based dedup
 - `parse_ek_json_line()` pure parser: extracts BSSID/SSID from probe responses (`0x05`), association requests (`0x00`), reassociation requests (`0x02`), and beacon leaks (`0x08`)
 - `build_display_filter()`: constructs combined tshark display filter with BSSID validation (defense-in-depth)
@@ -50,6 +63,12 @@ All notable changes to this project are documented in this file.
 
 ### Security
 
+- **Aireplay command injection prevented**: `run_deauth()` validates BSSID, client MAC, and interface name via strict regex before passing to `Command::arg()`; no shell interpolation
+- **Aireplay stderr bounded**: stderr from failed `aireplay-ng` truncated to 512 bytes via `truncate_utf8` (UTF-8 boundary safe) and sanitized before display
+- **Aireplay stdin closed**: subprocess spawned with `stdin(Stdio::null())` to prevent ambient terminal inheritance
+- **Concurrent deauth bounded**: `MAX_CONCURRENT_DEAUTHS` cap (8) prevents unbounded process accumulation
+- **Deauth task lifecycle guaranteed**: `DeauthGuard` with `Drop` impl aborts all `JoinHandle`s on every exit path (`?` propagation, quit, channel disconnect) — no detached tasks
+- **Event channel backpressure logged**: all `try_send` failures in `run_deauth` logged via `tracing::warn` instead of silently dropped
 - **Tshark filter injection prevented**: `build_display_filter()` validates every BSSID via `is_valid_bssid()` before interpolation into the display filter expression
 - **Tshark output bounded**: `run_tshark()` rejects stdout exceeding 10 MiB to prevent memory exhaustion from large pcaps or broadened filters
 - **TOCTOU race on pcap path eliminated**: removed `pcap_path.exists()` pre-check; tshark failure is handled gracefully by the poll loop
@@ -67,6 +86,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- `app::run()` refactored: initial screen detection, session spawn, and deauth dispatch extracted into helpers to stay within the 100-line clippy limit
+- `_airodump_ctrl` renamed to `airodump_ctrl` (no longer underscore-prefixed — now actively passed to `try_spawn_session`)
 - `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
 - Tshark poll loop uses owned `Vec<String>` for unrevealed BSSIDs to release lock before subprocess call
 - CI actions pinned to commit SHAs instead of mutable tags

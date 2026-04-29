@@ -93,4 +93,17 @@ pub enum AireplayError {
     /// Failed to spawn aireplay-ng.
     #[error("failed to spawn aireplay-ng: {0}")]
     Spawn(#[source] std::io::Error),
+
+    /// aireplay-ng exited with a non-zero status.
+    #[error("aireplay-ng exited with status {status}: {stderr}")]
+    Failed {
+        /// Process exit code.
+        status: i32,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// An argument failed validation at the command boundary.
+    #[error("invalid argument for aireplay-ng: {0}")]
+    InvalidArgument(String),
 }
