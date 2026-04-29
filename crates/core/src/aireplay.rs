@@ -196,10 +196,8 @@ pub async fn run_deauth(
         } else {
             raw_stdout
         };
-        let diag = validate::sanitize_display_string(validate::truncate_utf8(
-            &combined,
-            MAX_STDERR_LEN,
-        ));
+        let diag =
+            validate::sanitize_display_string(validate::truncate_utf8(&combined, MAX_STDERR_LEN));
         let status = output.status.code().unwrap_or(UNKNOWN_EXIT_STATUS);
         let msg = format!("aireplay-ng failed (status {status}): {diag}");
         if tx.try_send(AppEvent::Error(msg)).is_err() {
