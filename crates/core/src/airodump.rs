@@ -271,6 +271,7 @@ pub struct AirodumpController {
     join_handle: JoinHandle<()>,
     csv_handle: JoinHandle<()>,
     pcap_path: PathBuf,
+    output_dir: PathBuf,
 }
 
 impl AirodumpController {
@@ -302,7 +303,8 @@ impl AirodumpController {
         }
 
         let prefix = canonical_dir.join("veilbreak");
-        clean_stale_outputs(&canonical_dir);
+        clean_stale_outputs(&canonical_dir)?;
+        write_pid_file(&canonical_dir);
 
         tracing::debug!(
             "spawning: airodump-ng -w {} --output-format pcap,csv --band {} {}",
@@ -335,11 +337,12 @@ impl AirodumpController {
         let child = Arc::new(Mutex::new(child));
 
         let child_waiter = Arc::clone(&child);
+        let stderr_task = stderr.map(|s| tokio::spawn(drain_stderr(s)));
         let join_handle = tokio::spawn(async move {
-            if let Some(stderr) = stderr {
-                drain_stderr(stderr).await;
-            }
             let _ = child_waiter.lock().await.wait().await;
+            if let Some(t) = stderr_task {
+                let _ = t.await;
+            }
         });
 
         let file_stem = prefix.file_name().unwrap_or_default().to_os_string();
@@ -362,6 +365,7 @@ impl AirodumpController {
             join_handle,
             csv_handle,
             pcap_path,
+            output_dir: canonical_dir,
         })
     }
 
@@ -387,14 +391,34 @@ impl Drop for AirodumpController {
         }
         self.csv_handle.abort();
         self.join_handle.abort();
+        remove_pid_file(&self.output_dir);
     }
 }
 
+const PID_FILE_NAME: &str = "veilbreak.pid";
+
 /// Removes stale `veilbreak-NN.csv` / `.cap` files from a previous session so
 /// that airodump-ng starts its counter at `-01` and our hardcoded path matches.
-fn clean_stale_outputs(dir: &Path) {
+///
+/// Skips cleanup if a PID file indicates another session is still active in
+/// this directory.
+fn clean_stale_outputs(dir: &Path) -> Result<(), AirodumpError> {
+    let pid_path = dir.join(PID_FILE_NAME);
+    if let Ok(contents) = std::fs::read_to_string(&pid_path)
+        && let Ok(pid) = contents.trim().parse::<u32>()
+        && is_pid_alive(pid)
+    {
+        return Err(AirodumpError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "another veilbreak session (PID {pid}) is active in {}",
+                dir.display()
+            ),
+        )));
+    }
+
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+        return Ok(());
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -411,13 +435,40 @@ fn clean_stale_outputs(dir: &Path) {
             tracing::warn!("failed to remove stale output {name_str}: {e}");
         }
     }
+    Ok(())
+}
+
+fn write_pid_file(dir: &Path) {
+    let pid_path = dir.join(PID_FILE_NAME);
+    if let Err(e) = std::fs::write(&pid_path, format!("{}\n", std::process::id())) {
+        tracing::warn!("failed to write PID file: {e}");
+    }
+}
+
+fn remove_pid_file(dir: &Path) {
+    let _ = std::fs::remove_file(dir.join(PID_FILE_NAME));
+}
+
+fn is_pid_alive(pid: u32) -> bool {
+    #[allow(clippy::cast_possible_wrap)]
+    // SAFETY: kill(pid, 0) is a standard existence check — sends no signal.
+    unsafe {
+        libc::kill(pid as i32, 0) == 0
+    }
 }
 
 async fn drain_stderr(stderr: tokio::process::ChildStderr) {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let mut lines = BufReader::new(stderr).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        tracing::debug!(target: "airodump_stderr", "{line}");
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => tracing::debug!(target: "airodump_stderr", "{line}"),
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!("airodump stderr read error: {e}");
+                break;
+            }
+        }
     }
 }
 
