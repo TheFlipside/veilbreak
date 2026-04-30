@@ -56,11 +56,26 @@ fn draw_dashboard(frame: &mut Frame, dash: &mut crate::app::DashboardState, stat
         .filter(|(_, ap)| dash.filter.matches(ap))
         .collect();
 
+    // Resolve BSSID anchor → row index. Write table_state directly here;
+    // calling select_ap() would clear the anchor we just resolved.
+    let anchor = dash.selected_bssid.clone();
     if filtered.is_empty() {
         dash.table_state.select(None);
+        // Preserve selected_bssid so the anchor survives a temporarily empty
+        // filtered list (e.g. toggling a filter on then off).
+    } else if let Some(bssid) = &anchor {
+        if let Some(idx) = filtered.iter().position(|(b, _)| *b == bssid) {
+            dash.table_state.select(Some(idx));
+        } else {
+            // Anchor AP was filtered out — fall back to top of list.
+            dash.table_state.select(Some(0));
+            dash.selected_bssid = Some(filtered[0].0.to_owned());
+        }
     } else {
-        let clamped = dash.selected_ap().min(filtered.len() - 1);
-        dash.select_ap(clamped);
+        // No anchor (user just navigated) — bind to current index.
+        let clamped = dash.selected_ap().min(filtered.len().saturating_sub(1));
+        dash.table_state.select(Some(clamped));
+        dash.selected_bssid = Some(filtered[clamped].0.to_owned());
     }
 
     widgets::ap_list::draw(frame, body[0], &filtered, dash);

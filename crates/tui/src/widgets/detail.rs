@@ -3,6 +3,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use veilbreak_core::state::AccessPoint;
+use veilbreak_core::validate;
 
 use crate::app::{DashboardState, FocusPane};
 use crate::theme;
@@ -32,10 +33,11 @@ pub fn draw(frame: &mut Frame, area: Rect, sorted: &[(&str, &AccessPoint)], dash
     };
 
     let ssid_display = match &ap.ssid {
-        Some(ssid) => format!("<revealed: {ssid}>"),
+        Some(ssid) => format!("<revealed: {}>", validate::sanitize_display_string(ssid)),
         None if ap.hidden => "<hidden>".to_owned(),
         None => "(unknown)".to_owned(),
     };
+    let enc_display = validate::sanitize_display_string(&ap.encryption);
 
     let mut lines = vec![
         Line::from(vec![
@@ -51,7 +53,7 @@ pub fn draw(frame: &mut Frame, area: Rect, sorted: &[(&str, &AccessPoint)], dash
             Span::raw(ap.channel.to_string()),
             Span::raw("    "),
             Span::styled("Enc: ", theme::DIM),
-            Span::raw(&ap.encryption),
+            Span::raw(enc_display),
         ]),
         Line::from(vec![
             Span::styled("  Power:  ", theme::DIM),

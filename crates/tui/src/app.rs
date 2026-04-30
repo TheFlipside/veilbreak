@@ -84,17 +84,25 @@ pub struct DashboardState {
     pub filter: FilterState,
     /// Sole source of truth for AP selection index and table viewport offset.
     pub table_state: TableState,
+    /// BSSID of the selected AP, used to stabilize selection across list changes.
+    pub selected_bssid: Option<String>,
 }
 
 impl DashboardState {
-    /// Returns the currently selected AP index (0 if nothing is selected).
+    /// Returns the currently selected AP row index.
+    ///
+    /// Returns 0 when nothing is selected (`table_state` is `None`), so
+    /// callers that need to distinguish "no selection" from "row 0" should
+    /// check `table_state.selected()` directly.
     pub fn selected_ap(&self) -> usize {
         self.table_state.selected().unwrap_or(0)
     }
 
-    /// Sets the selected AP index.
-    pub const fn select_ap(&mut self, index: usize) {
+    /// Sets the selected AP index and clears the BSSID anchor so the next
+    /// render picks up the BSSID at the new position.
+    pub fn select_ap(&mut self, index: usize) {
         self.table_state.select(Some(index));
+        self.selected_bssid = None;
     }
 }
 
