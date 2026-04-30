@@ -152,14 +152,14 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
         }
 
         let ch_raw = fields[3].trim();
-        let channel = ch_raw
-            .parse::<u32>()
-            .ok()
-            .filter(|&ch| validate::is_valid_channel(ch))
-            .unwrap_or_else(|| {
+        let channel = ch_raw.parse::<u32>().ok().filter(|&ch| {
+            if validate::is_valid_channel(ch) {
+                true
+            } else {
                 tracing::debug!("invalid channel {:?} for BSSID {bssid}", ch_raw);
-                0
-            });
+                false
+            }
+        });
         let privacy = validate::sanitize_display_string(fields[5].trim());
         let pwr_raw = fields[8].trim();
         let power = pwr_raw.parse::<i32>().unwrap_or_else(|_| {
@@ -615,7 +615,7 @@ mod tests {
         let ap = &snap.access_points[0];
         assert_eq!(ap.bssid, "AA:BB:CC:00:11:20");
         assert_eq!(ap.ssid.as_deref(), Some("FIXTURE-NET-01"));
-        assert_eq!(ap.channel, 6);
+        assert_eq!(ap.channel, Some(6));
         assert_eq!(ap.power, -42);
         assert_eq!(ap.encryption, "WPA2");
         assert_eq!(ap.beacon_count, 127);

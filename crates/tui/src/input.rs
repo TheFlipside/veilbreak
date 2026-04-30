@@ -327,9 +327,9 @@ fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) -> Outcome {
     let Some((_, ap)) = ap else {
         return Outcome::Continue;
     };
-    if ap.channel == 0 {
+    let Some(channel) = ap.channel else {
         return Outcome::Log(format!("cannot deauth {}: channel unknown", ap.bssid));
-    }
+    };
     let mut clients: Vec<(String, i32)> = ap
         .clients
         .values()
@@ -338,7 +338,7 @@ fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) -> Outcome {
     clients.sort_by_key(|&(_, power)| Reverse(power));
     dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
         bssid: ap.bssid.clone(),
-        channel: ap.channel,
+        channel,
         clients,
         selected: 0,
     }));
@@ -351,7 +351,7 @@ mod tests {
     use std::collections::HashMap;
     use veilbreak_core::state::AccessPoint;
 
-    fn make_state_with_ap(channel: u32) -> AppState {
+    fn make_state_with_ap(channel: Option<u32>) -> AppState {
         let mut state = AppState::new();
         state.apply_event(&veilbreak_core::AppEvent::ApDiscovered(AccessPoint {
             bssid: "AA:BB:CC:DD:EE:FF".to_owned(),
@@ -368,8 +368,8 @@ mod tests {
     }
 
     #[test]
-    fn deauth_blocked_on_channel_zero() {
-        let state = make_state_with_ap(0);
+    fn deauth_blocked_on_unknown_channel() {
+        let state = make_state_with_ap(None);
         let mut dash = DashboardState {
             interface_name: Some("wlan0".to_owned()),
             ..DashboardState::default()
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn deauth_opens_modal_on_valid_channel() {
-        let state = make_state_with_ap(6);
+        let state = make_state_with_ap(Some(6));
         let mut dash = DashboardState {
             interface_name: Some("wlan0".to_owned()),
             ..DashboardState::default()

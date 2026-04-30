@@ -158,7 +158,9 @@ impl AppState {
 
         match sort {
             SortColumn::Bssid => aps.sort_by(|a, b| a.0.cmp(b.0)),
-            SortColumn::Channel => aps.sort_by_key(|&(_, ap)| ap.channel),
+            SortColumn::Channel => {
+                aps.sort_by_key(|&(_, ap)| ap.channel.unwrap_or(u32::MAX));
+            }
             SortColumn::Power => aps.sort_by_key(|&(_, ap)| std::cmp::Reverse(ap.power)),
             SortColumn::Clients => {
                 aps.sort_by_key(|&(_, ap)| std::cmp::Reverse(ap.clients.len()));
@@ -185,8 +187,8 @@ pub struct AccessPoint {
     pub bssid: String,
     /// SSID, if known. `None` means hidden and not yet revealed.
     pub ssid: Option<String>,
-    /// Operating channel. `0` means the channel is not yet known.
-    pub channel: u32,
+    /// Operating channel. `None` means the channel is not yet known.
+    pub channel: Option<u32>,
     /// Signal strength in dBm (negative).
     pub power: i32,
     /// Encryption type (e.g. `"WPA2"`, `"WPA3"`, `"OPN"`).

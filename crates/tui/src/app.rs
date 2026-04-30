@@ -149,8 +149,8 @@ impl FilterState {
         }
         match self.band {
             BandFilter::All => true,
-            BandFilter::TwoFour => ap.channel > 0 && ap.channel <= 14,
-            BandFilter::Five => ap.channel >= 36,
+            BandFilter::TwoFour => matches!(ap.channel, Some(ch) if ch <= 14),
+            BandFilter::Five => matches!(ap.channel, Some(ch) if ch >= 36),
         }
     }
 }
@@ -683,7 +683,10 @@ fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {
     let msg = match event {
         AppEvent::ApDiscovered(ap) => {
             let tag = if ap.hidden { " hidden" } else { "" };
-            format!("new AP {} ch{}{tag}", ap.bssid, ap.channel)
+            let ch = ap
+                .channel
+                .map_or_else(|| "\u{2014}".to_owned(), |c| c.to_string());
+            format!("new AP {} ch{ch}{tag}", ap.bssid)
         }
         AppEvent::ApUpdated(_) | AppEvent::CaptureSize(_) | AppEvent::ChannelChanged(_) => {
             return;
