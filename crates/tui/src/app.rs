@@ -305,6 +305,11 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                                     );
                                 }
                             }
+                            input::Outcome::Log(msg) => {
+                                let safe = veilbreak_core::validate::sanitize_display_string(&msg);
+                                tracing::info!("{safe}");
+                                state.log_event(safe);
+                            }
                         }
                     }
                 }

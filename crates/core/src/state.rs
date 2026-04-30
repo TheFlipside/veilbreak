@@ -185,7 +185,7 @@ pub struct AccessPoint {
     pub bssid: String,
     /// SSID, if known. `None` means hidden and not yet revealed.
     pub ssid: Option<String>,
-    /// Operating channel.
+    /// Operating channel. `0` means the channel is not yet known.
     pub channel: u32,
     /// Signal strength in dBm (negative).
     pub power: i32,

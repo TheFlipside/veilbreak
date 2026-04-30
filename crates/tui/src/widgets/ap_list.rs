@@ -50,7 +50,11 @@ pub fn draw(
             };
             Row::new(vec![
                 Cell::from(ap.bssid.clone()),
-                Cell::from(ap.channel.to_string()),
+                if ap.channel > 0 {
+                    Cell::from(ap.channel.to_string())
+                } else {
+                    Cell::from("\u{2014}")
+                },
                 Cell::from(ap.power.to_string()),
                 Cell::from(ap.encryption.clone()),
                 Cell::from(ap.clients.len().to_string()),

@@ -49,7 +49,11 @@ pub fn draw(frame: &mut Frame, area: Rect, sorted: &[(&str, &AccessPoint)], dash
         ]),
         Line::from(vec![
             Span::styled("  Chan:   ", theme::DIM),
-            Span::raw(ap.channel.to_string()),
+            if ap.channel > 0 {
+                Span::raw(ap.channel.to_string())
+            } else {
+                Span::raw("\u{2014}")
+            },
             Span::raw("    "),
             Span::styled("Enc: ", theme::DIM),
             Span::raw(&ap.encryption),

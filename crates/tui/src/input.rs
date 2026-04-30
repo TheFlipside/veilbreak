@@ -19,6 +19,8 @@ pub enum Outcome {
     Quit,
     /// Launch a deauth job with the given target.
     Deauth(DeauthTarget),
+    /// Post a message to the event log.
+    Log(String),
 }
 
 /// Internal outcome for setup screens that may trigger screen transitions.
@@ -299,10 +301,7 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
             }
             Outcome::Continue
         }
-        KeyCode::Char('d') => {
-            open_deauth_modal(dash, state);
-            Outcome::Continue
-        }
+        KeyCode::Char('d') => open_deauth_modal(dash, state),
         KeyCode::Char('f') => {
             dash.modal = Some(Modal::Filter { selected: 0 });
             Outcome::Continue
@@ -315,30 +314,84 @@ fn handle_dashboard_key(dash: &mut DashboardState, state: &AppState, key: KeyCod
     }
 }
 
-fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) {
+fn open_deauth_modal(dash: &mut DashboardState, state: &AppState) -> Outcome {
     if dash.interface_name.is_none() || !matches!(dash.focus, FocusPane::ApList | FocusPane::Detail)
     {
-        return;
+        return Outcome::Continue;
     }
     let ap = state
         .sorted_aps(dash.sort)
         .into_iter()
         .filter(|(_, ap)| dash.filter.matches(ap))
         .nth(dash.selected_ap());
-    if let Some((_, ap)) = ap
-        && ap.channel > 0
-    {
-        let mut clients: Vec<(String, i32)> = ap
-            .clients
-            .values()
-            .map(|c| (c.mac.clone(), c.power))
-            .collect();
-        clients.sort_by_key(|&(_, power)| Reverse(power));
-        dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
-            bssid: ap.bssid.clone(),
-            channel: ap.channel,
-            clients,
-            selected: 0,
+    let Some((_, ap)) = ap else {
+        return Outcome::Continue;
+    };
+    if ap.channel == 0 {
+        return Outcome::Log(format!("cannot deauth {}: channel unknown", ap.bssid));
+    }
+    let mut clients: Vec<(String, i32)> = ap
+        .clients
+        .values()
+        .map(|c| (c.mac.clone(), c.power))
+        .collect();
+    clients.sort_by_key(|&(_, power)| Reverse(power));
+    dash.modal = Some(Modal::Deauth(crate::app::DeauthModal {
+        bssid: ap.bssid.clone(),
+        channel: ap.channel,
+        clients,
+        selected: 0,
+    }));
+    Outcome::Continue
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use veilbreak_core::state::AccessPoint;
+
+    fn make_state_with_ap(channel: u32) -> AppState {
+        let mut state = AppState::new();
+        state.apply_event(&veilbreak_core::AppEvent::ApDiscovered(AccessPoint {
+            bssid: "AA:BB:CC:DD:EE:FF".to_owned(),
+            ssid: Some("TestNet".to_owned()),
+            channel,
+            power: -42,
+            encryption: "WPA2".to_owned(),
+            clients: HashMap::new(),
+            beacon_count: 10,
+            hidden: false,
+            revealed: false,
         }));
+        state
+    }
+
+    #[test]
+    fn deauth_blocked_on_channel_zero() {
+        let state = make_state_with_ap(0);
+        let mut dash = DashboardState {
+            interface_name: Some("wlan0".to_owned()),
+            ..DashboardState::default()
+        };
+        dash.table_state.select(Some(0));
+
+        let outcome = handle_dashboard_key(&mut dash, &state, KeyCode::Char('d'));
+        assert!(matches!(outcome, Outcome::Log(_)));
+        assert!(dash.modal.is_none());
+    }
+
+    #[test]
+    fn deauth_opens_modal_on_valid_channel() {
+        let state = make_state_with_ap(6);
+        let mut dash = DashboardState {
+            interface_name: Some("wlan0".to_owned()),
+            ..DashboardState::default()
+        };
+        dash.table_state.select(Some(0));
+
+        let outcome = handle_dashboard_key(&mut dash, &state, KeyCode::Char('d'));
+        assert!(matches!(outcome, Outcome::Continue));
+        assert!(matches!(dash.modal, Some(Modal::Deauth(_))));
     }
 }
