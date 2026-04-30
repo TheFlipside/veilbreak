@@ -55,6 +55,8 @@ pub enum AppEvent {
         /// Number of deauth frames sent.
         frames_sent: u32,
     },
+    /// The monitor interface changed to a new channel (channel hopping).
+    ChannelChanged(u32),
     /// Capture file size changed.
     CaptureSize(u64),
     /// An error occurred in a background task.

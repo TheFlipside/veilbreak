@@ -14,8 +14,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
     let secs = elapsed % 60;
 
     let iface = dash.interface_name.as_deref().unwrap_or("\u{2014}");
-    let ch = dash
-        .channel
+    let ch = state
+        .current_channel
         .map_or_else(|| "\u{2014}".to_owned(), |c| c.to_string());
 
     let cap_size = format_bytes(state.capture_size);

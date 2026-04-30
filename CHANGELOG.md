@@ -89,9 +89,18 @@ All notable changes to this project are documented in this file.
 - Test fixture `tests/fixtures/airodump.csv` with 5 APs (2 hidden, 1 OPN) and 5 clients
 - 14 unit tests for CSV parsing, diffing, and edge cases in `core::airodump`
 - 5 unit tests for sanitization and truncation in `core::validate`
+- `AppEvent::ChannelChanged(u32)` event variant for propagating channel-hop updates from the monitor interface
+- `AppState::current_channel` field tracking the current monitor channel, updated via `ChannelChanged` events
+- `channel_watch_loop` in `core::airodump`: polls `iw dev <iface> info` every 1s, parses the channel, emits `ChannelChanged` on change
+- `parse_iw_channel()` parser for extracting the channel from `iw dev` output
+- `validate::is_valid_channel()`: validates 802.11 channel numbers (1–196)
+- 3 unit tests for `parse_iw_channel` (fixture, missing channel, 5 GHz channel)
+- 2 unit tests for `ChannelChanged` state transitions (`None` → `Some`, overwrite)
+- 2 unit tests for channel number validation (valid and invalid ranges)
 
 ### Fixed
 
+- **Channel display in header**: `ch:` field in the header bar now shows the current channel being hopped to by the monitor interface, polled via `iw dev <iface> info` every 1 second; previously always showed `–` because the field was never populated
 - `revealed.jsonl` now captures SSID reveals from CSV updates (`ApUpdated`), not only tshark's `SsidRevealed` — fixes empty reveal log when airodump-ng's CSV parser discovers the SSID before tshark's 3-second poll fires
 - `diff_and_emit()` now triggers `ApUpdated` on SSID changes, not only power/beacon/channel changes — fixes silent reveal loss when RF conditions are stable
 - Session output directory printed to stderr on exit so the user can find pcap, CSV, and reveal log files
@@ -142,6 +151,7 @@ All notable changes to this project are documented in this file.
 - **Reveal log symlink attack prevented**: `open_reveal_log` opens `revealed.jsonl` with `O_NOFOLLOW` flag, preventing symlink-based file overwrite when running as root
 - **Log file moved into session directory**: `veilbreak.log` now written to the session output directory (mode `0o700`) instead of fixed `/tmp/veilbreak.log`, eliminating predictable-path hard-link information disclosure
 - **User-supplied output directory canonicalized**: `--output-dir` path is canonicalized via `Path::canonicalize()` immediately after validation, resolving symlink components and `..` traversal before any file operations
+- **Channel number validated at parse boundary**: CSV parser and `iw dev` output parser now reject channels outside the 802.11 range (1–196) via `validate::is_valid_channel()`, preventing display of attacker-controlled values from crafted CSV data
 - **Band filter guards unknown channels**: `FilterState::matches` rejects `channel == 0` (unknown) from the 2.4 GHz filter to prevent false positives
 - **Empty-SSID reveal guard**: `ApUpdated` and `SsidRevealed` handlers reject empty SSIDs (after sanitization) before flipping `revealed`/`hidden` state, preventing blank-SSID APs from being permanently marked as revealed
 - **BSSID validation on `ApUpdated`**: `apply_event` now validates BSSID format before processing `ApUpdated` events, matching the defense-in-depth pattern of all other event handlers
@@ -154,6 +164,8 @@ All notable changes to this project are documented in this file.
 - `app::run()` refactored: initial screen detection, session spawn, and deauth dispatch extracted into helpers to stay within the 100-line clippy limit
 - `_airodump_ctrl` renamed to `airodump_ctrl` (no longer underscore-prefixed — now actively passed to `try_spawn_session`)
 - `TsharkController` hidden-BSSID updates gated behind `ApDiscovered`/`SsidRevealed` events only (avoids unnecessary lock+alloc on `ApUpdated`/`CaptureSize`)
+- Channel display sourced from `AppState::current_channel` (populated by `ChannelChanged` events) instead of the removed `DashboardState::channel` field
+- `AirodumpController` now manages a `channel_handle` task alongside `csv_handle`; both aborted on drop
 - `run_tshark()` refactored from `Command::output()` to `Command::spawn()` with piped stdout/stderr, bounded streaming reads, and `kill_on_drop(true)`
 - `AirodumpController` stores `child_pid: u32` alongside `Arc<Mutex<Child>>` for the `Drop` fallback kill path
 - `detect_initial_screen()` moved from blocking `await` to a spawned task; `resolve_detect_task()` polls completion via the `tokio::select!` sleep arm

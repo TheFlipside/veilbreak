@@ -152,10 +152,14 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
         }
 
         let ch_raw = fields[3].trim();
-        let channel = ch_raw.parse::<u32>().unwrap_or_else(|_| {
-            tracing::debug!("malformed channel {:?} for BSSID {bssid}", ch_raw);
-            0
-        });
+        let channel = ch_raw
+            .parse::<u32>()
+            .ok()
+            .filter(|&ch| validate::is_valid_channel(ch))
+            .unwrap_or_else(|| {
+                tracing::debug!("invalid channel {:?} for BSSID {bssid}", ch_raw);
+                0
+            });
         let privacy = validate::sanitize_display_string(fields[5].trim());
         let pwr_raw = fields[8].trim();
         let power = pwr_raw.parse::<i32>().unwrap_or_else(|_| {
@@ -301,6 +305,7 @@ pub struct AirodumpController {
     child_pid: u32,
     join_handle: JoinHandle<()>,
     csv_handle: JoinHandle<()>,
+    channel_handle: JoinHandle<()>,
     pcap_path: PathBuf,
     output_dir: PathBuf,
 }
@@ -388,13 +393,15 @@ impl AirodumpController {
         let mut csv_path = prefix;
         csv_path.set_file_name(csv_name);
 
-        let csv_handle = tokio::spawn(csv_watch_loop(csv_path, tx));
+        let csv_handle = tokio::spawn(csv_watch_loop(csv_path, tx.clone()));
+        let channel_handle = tokio::spawn(channel_watch_loop(interface.to_owned(), tx));
 
         Ok(Self {
             child,
             child_pid,
             join_handle,
             csv_handle,
+            channel_handle,
             pcap_path,
             output_dir: canonical_dir,
         })
@@ -420,6 +427,7 @@ impl Drop for AirodumpController {
                 libc::kill(self.child_pid as i32, libc::SIGKILL);
             }
         }
+        self.channel_handle.abort();
         self.csv_handle.abort();
         self.join_handle.abort();
         remove_pid_file(&self.output_dir);
@@ -503,6 +511,60 @@ async fn drain_stderr(stderr: tokio::process::ChildStderr) {
                 tracing::warn!("airodump stderr read error: {e}");
                 break;
             }
+        }
+    }
+}
+
+/// Parses the current channel from `iw dev <iface> info` output.
+///
+/// Looks for a line matching `channel <N> (<freq> MHz)` and returns `N`.
+#[must_use]
+pub fn parse_iw_channel(output: &str) -> Option<u32> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("channel ")
+            && let Some(ch_str) = rest.split_whitespace().next()
+        {
+            return ch_str
+                .parse()
+                .ok()
+                .filter(|&ch| validate::is_valid_channel(ch));
+        }
+    }
+    None
+}
+
+async fn channel_watch_loop(interface: String, tx: mpsc::Sender<AppEvent>) {
+    let mut last_ch: Option<u32> = None;
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let Ok(output) = Command::new("iw")
+            .arg("dev")
+            .arg(&interface)
+            .arg("info")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .await
+        else {
+            continue;
+        };
+
+        if !output.status.success() {
+            continue;
+        }
+
+        let Ok(stdout) = String::from_utf8(output.stdout) else {
+            continue;
+        };
+
+        if let Some(ch) = parse_iw_channel(&stdout)
+            && last_ch != Some(ch)
+        {
+            last_ch = Some(ch);
+            let _ = tx.try_send(AppEvent::ChannelChanged(ch));
         }
     }
 }
@@ -731,5 +793,24 @@ mod tests {
         assert_eq!(snap.access_points.len(), 5);
         assert_eq!(snap.clients.len(), 5);
         assert_eq!(snap.clients[0].bssid, "AA:BB:CC:00:11:20");
+    }
+
+    const IW_DEV_FIXTURE: &str = include_str!("../../../tests/fixtures/iw_dev.txt");
+
+    #[test]
+    fn parses_channel_from_iw_dev_output() {
+        assert_eq!(parse_iw_channel(IW_DEV_FIXTURE), Some(6));
+    }
+
+    #[test]
+    fn parse_iw_channel_no_channel_line() {
+        let output = "Interface wlan0\n\tifindex 3\n\twdev 0x1\n\ttype monitor\n";
+        assert_eq!(parse_iw_channel(output), None);
+    }
+
+    #[test]
+    fn parse_iw_channel_different_channel() {
+        let output = "\t\tchannel 149 (5745 MHz), width: 80 MHz, center1: 5775 MHz\n";
+        assert_eq!(parse_iw_channel(output), Some(149));
     }
 }

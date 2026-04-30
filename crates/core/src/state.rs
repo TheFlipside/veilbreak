@@ -22,6 +22,8 @@ pub struct AppState {
     pub started_at: Instant,
     /// Current capture file size in bytes.
     pub capture_size: u64,
+    /// Current channel the monitor interface is tuned to.
+    pub current_channel: Option<u32>,
     /// Event log entries (newest last).
     pub event_log: VecDeque<EventLogEntry>,
 }
@@ -34,6 +36,7 @@ impl AppState {
             access_points: HashMap::new(),
             started_at: Instant::now(),
             capture_size: 0,
+            current_channel: None,
             event_log: VecDeque::new(),
         }
     }
@@ -122,6 +125,9 @@ impl AppState {
                         ap.hidden = false;
                     }
                 }
+            }
+            AppEvent::ChannelChanged(ch) => {
+                self.current_channel = Some(*ch);
             }
             AppEvent::CaptureSize(size) => {
                 self.capture_size = *size;
@@ -254,5 +260,27 @@ impl std::fmt::Display for SortColumn {
             Self::Clients => f.write_str("CLI"),
             Self::Beacons => f.write_str("BCN"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_changed_sets_current_channel() {
+        let mut state = AppState::new();
+        assert_eq!(state.current_channel, None);
+
+        state.apply_event(&AppEvent::ChannelChanged(6));
+        assert_eq!(state.current_channel, Some(6));
+    }
+
+    #[test]
+    fn channel_changed_overwrites_previous() {
+        let mut state = AppState::new();
+        state.apply_event(&AppEvent::ChannelChanged(6));
+        state.apply_event(&AppEvent::ChannelChanged(11));
+        assert_eq!(state.current_channel, Some(11));
     }
 }

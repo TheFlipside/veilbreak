@@ -33,6 +33,12 @@ pub fn is_valid_interface_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// Returns `true` if `ch` is a valid 802.11 channel number (1–196).
+#[must_use]
+pub const fn is_valid_channel(ch: u32) -> bool {
+    ch >= 1 && ch <= 196
+}
+
 /// Maximum length in bytes for an ESSID (IEEE 802.11 limit).
 pub const MAX_ESSID_LEN: usize = 32;
 
@@ -179,5 +185,22 @@ mod tests {
         let s = "aé";
         let result = truncate_utf8(s, 2);
         assert_eq!(result, "a");
+    }
+
+    #[test]
+    fn valid_channels() {
+        assert!(is_valid_channel(1));
+        assert!(is_valid_channel(6));
+        assert!(is_valid_channel(14));
+        assert!(is_valid_channel(36));
+        assert!(is_valid_channel(149));
+        assert!(is_valid_channel(196));
+    }
+
+    #[test]
+    fn invalid_channels() {
+        assert!(!is_valid_channel(0));
+        assert!(!is_valid_channel(197));
+        assert!(!is_valid_channel(u32::MAX));
     }
 }

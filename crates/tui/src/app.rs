@@ -72,8 +72,6 @@ pub struct DashboardState {
     pub sort: SortColumn,
     /// Name of the monitoring interface, if active.
     pub interface_name: Option<String>,
-    /// Current channel being monitored, if known.
-    pub channel: Option<u32>,
     /// Scroll offset in the event log.
     pub event_scroll: usize,
     /// Wi-Fi band passed to airodump-ng.
@@ -682,7 +680,9 @@ fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {
             let tag = if ap.hidden { " hidden" } else { "" };
             format!("new AP {} ch{}{tag}", ap.bssid, ap.channel)
         }
-        AppEvent::ApUpdated(_) | AppEvent::CaptureSize(_) => return,
+        AppEvent::ApUpdated(_) | AppEvent::CaptureSize(_) | AppEvent::ChannelChanged(_) => {
+            return;
+        }
         AppEvent::ClientSeen(client) => {
             format!("client {} associated to {}", client.mac, client.bssid)
         }
