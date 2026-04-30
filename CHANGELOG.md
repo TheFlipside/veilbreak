@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `wifi-testlab/`: virtual WiFi lab using `mac80211_hwsim` for developing and testing veilbreak without physical hardware
+  - `setup.sh`: lab lifecycle management (`--up`, `--down`, `--status`, `--restart`) — creates three virtual radios, isolates AP and client in network namespaces, enables monitor mode
+  - `verify.sh`: 5-check smoke test confirming kernel module, services, client association, and monitor mode
+  - `configs/hostapd.conf`: hidden AP configuration (`ignore_broadcast_ssid=1`, WPA2-PSK, channel 6)
+  - `configs/wpa_supplicant.conf`: client configuration with `scan_ssid=1` for active probing
+  - `GUIDE.md`: detailed usage walkthrough and architecture documentation
 - `Band` enum in `core::airodump` with `Bg`, `A`, `Abg` variants and `as_arg()`, `label()`, `next()` accessors
 - `--band <BAND>` CLI flag: select Wi-Fi band (`bg`, `a`, `abg`) without interactive prompt; defaults to `bg` (2.4 GHz)
 - `SetupScreen::BandSelect` step in setup flow: interactive band selection between interface pick and mode confirm
@@ -20,6 +26,9 @@ All notable changes to this project are documented in this file.
 - `revealed.jsonl` persistence: each `SsidRevealed` event appends an NDJSON record to the session output directory
 - `--output-dir <DIR>` CLI flag: use an existing directory for session output instead of auto-created temp directory
 - `resolve_output_dir()` helper extracting output directory resolution from `run_tui`
+- `--replay <PCAP>` one-shot mode: loads companion CSV for AP/client state, spawns tshark for SSID reveals, with path hardening (`canonicalize` + `is_file` check)
+- `drain_events()` helper in app loop: extracts first + up to 64 queued events, keeping `run()` under clippy's 100-line limit
+- Periodic 1-second redraw timer in dashboard (always active, not gated on loading state) — fixes frozen elapsed time in replay mode
 - `Screen::Loading` variant with animated dot indicator during async interface detection
 - `DetectGuard` abort-on-drop wrapper ensuring the detection task never outlives the app
 - `f`/filter and `?`/help keybind hints added to all three focus pane hint arrays
@@ -80,6 +89,8 @@ All notable changes to this project are documented in this file.
 - Interfaces with invalid phy names are now rejected during parsing
 - `AirodumpController::Drop` no longer panics in async context (`blocking_lock()` replaced with `try_lock()` + PID fallback)
 - Redundant `AirodumpController::stop()` removed — `Drop` is the sole cleanup path
+- `changes_hidden_set()` now includes `ApUpdated` — fixes stale tshark BSSID filter when an AP's SSID appeared via CSV update rather than `SsidRevealed`
+- `--replay` mode: elapsed time now ticks continuously (periodic redraw timer always active); event log timestamps no longer all show `00:00` (replay events applied as summary, not individually)
 - Startup delay eliminated: interface detection runs in a background task while the loading screen renders immediately
 
 ### Security
@@ -105,6 +116,12 @@ All notable changes to this project are documented in this file.
 - **Output directory validated**: `AirodumpController::spawn()` canonicalizes and verifies `output_dir` is a directory
 - **Bounded event processing**: both `AppEvent` and terminal input drains capped at 64 per frame to prevent starvation
 - **Unicode Bidi attack surface closed**: `sanitize_display_string` strips directional overrides, isolates, zero-width marks, C1 controls, and soft hyphens
+- **Replay path hardened**: `load_replay` canonicalizes the pcap path and rejects non-regular files (devices, FIFOs, `/proc/*`, `/dev/*`) before reading, preventing symlink-based information disclosure when running as root
+- **wifi-testlab state file injection prevented**: `source` replaced with `load_interfaces()` — strict key-allowlist parser with `^[a-zA-Z0-9_-]{1,15}$` value regex; eliminates arbitrary code execution via tampered `.run/interfaces` file
+- **wifi-testlab run directory hardened**: `.run/` created with mode `0700`, `interfaces` file set to `0600`; prevents local information disclosure of interface names and PIDs
+- **wifi-testlab PID validation**: all PID file reads validated with `^[0-9]+$` before `kill`, preventing `kill -1` (all processes) via corrupted PID file
+- **wifi-testlab interface name validation**: `validate_iface()` enforces `^[a-zA-Z0-9_-]{1,15}$` on all hwsim-derived interface names before use in `iw`/`ip`/`sed` commands
+- **wifi-testlab wpa_supplicant socket restricted**: `ctrl_interface_group=0` limits control socket access to root only
 - **Reveal log symlink attack prevented**: `open_reveal_log` opens `revealed.jsonl` with `O_NOFOLLOW` flag, preventing symlink-based file overwrite when running as root
 - **Log file moved into session directory**: `veilbreak.log` now written to the session output directory (mode `0o700`) instead of fixed `/tmp/veilbreak.log`, eliminating predictable-path hard-link information disclosure
 - **User-supplied output directory canonicalized**: `--output-dir` path is canonicalized via `Path::canonicalize()` immediately after validation, resolving symlink components and `..` traversal before any file operations
