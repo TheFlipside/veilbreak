@@ -151,11 +151,23 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
             continue;
         }
 
-        let channel = fields[3].trim().parse::<u32>().unwrap_or(0);
+        let channel = fields[3].trim().parse::<u32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed channel for BSSID {bssid}");
+            0
+        });
         let privacy = validate::sanitize_display_string(fields[5].trim());
-        let power = fields[8].trim().parse::<i32>().unwrap_or(0);
-        let beacons = fields[9].trim().parse::<u64>().unwrap_or(0);
-        let id_length = fields[12].trim().parse::<u32>().unwrap_or(0);
+        let power = fields[8].trim().parse::<i32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed power for BSSID {bssid}");
+            0
+        });
+        let beacons = fields[9].trim().parse::<u64>().unwrap_or_else(|_| {
+            tracing::debug!("malformed beacon count for BSSID {bssid}");
+            0
+        });
+        let id_length = fields[12].trim().parse::<u32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed ID-length for BSSID {bssid}");
+            0
+        });
         let essid = fields[13].trim();
 
         let essid = validate::truncate_utf8(essid, validate::MAX_ESSID_LEN);
@@ -203,7 +215,10 @@ fn parse_client_section(section: &str) -> Vec<Client> {
             continue;
         }
 
-        let power = fields[3].trim().parse::<i32>().unwrap_or(0);
+        let power = fields[3].trim().parse::<i32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed power for client {mac}");
+            0
+        });
         let bssid = fields[5].trim();
         // "not associated" and similar non-BSSID values are expected; skip silently.
         if !validate::is_valid_bssid(bssid) {
@@ -494,7 +509,7 @@ async fn csv_watch_loop(path: PathBuf, tx: mpsc::Sender<AppEvent>) {
             continue;
         };
 
-        let size = content.len() as u64;
+        let size = u64::try_from(content.len()).unwrap_or(u64::MAX);
         let snapshot = parse_csv(&content);
         diff_and_emit(&snapshot, &known.aps, &known.clients, &tx);
 
