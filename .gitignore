@@ -1,2 +1,6 @@
+# Rustc
 /target
+*.rlib
+
+# CLaude
 **/.claude/settings.local.json
