@@ -60,12 +60,15 @@ fn restore_terminal() {
 
 fn resolve_output_dir(user_dir: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = user_dir {
+        let canonical = dir.canonicalize().map_err(|e| {
+            anyhow::anyhow!("--output-dir cannot be resolved: {}: {e}", dir.display())
+        })?;
         anyhow::ensure!(
-            dir.is_dir(),
+            canonical.is_dir(),
             "--output-dir must be an existing directory: {}",
-            dir.display()
+            canonical.display()
         );
-        Ok(dir.canonicalize()?)
+        Ok(canonical)
     } else {
         create_temp_dir()
     }
@@ -82,7 +85,7 @@ fn init_logging(output_dir: &Path) -> Result<()> {
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)?;
 
     tracing_subscriber::fmt()
@@ -125,6 +128,10 @@ async fn main() -> Result<()> {
     enable_raw_mode()?;
     let result = run_tui(cli.replay, cli.band, &output_dir).await;
     restore_terminal();
+
+    let safe_path =
+        veilbreak_core::validate::sanitize_display_string(&output_dir.display().to_string());
+    eprintln!("session output: {safe_path}");
 
     result
 }

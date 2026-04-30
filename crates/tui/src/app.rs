@@ -353,23 +353,27 @@ async fn resolve_detect_task(task: &mut Option<DetectGuard>) -> Option<Screen> {
 
 /// Applies the first event plus up to 64 additional queued events to state,
 /// event log, and reveal file. Returns whether the hidden-AP set changed.
+///
+/// `persist_reveal` runs **before** `apply_event` so it can detect
+/// hidden → unhidden transitions caused by `ApUpdated` events (where the
+/// CSV parser reveals the SSID before tshark's poll loop does).
 fn drain_events(
     rx: &mut mpsc::Receiver<AppEvent>,
     first: &AppEvent,
     state: &mut AppState,
     reveal_log: &mut Option<std::fs::File>,
 ) -> Result<bool> {
+    persist_reveal(reveal_log, state, first);
     state.apply_event(first);
     apply_event_to_log(state, first);
-    persist_reveal(reveal_log, state, first);
     let mut changed = changes_hidden_set(first);
     for _ in 0..64 {
         match rx.try_recv() {
             Ok(ev) => {
                 changed |= changes_hidden_set(&ev);
+                persist_reveal(reveal_log, state, &ev);
                 state.apply_event(&ev);
                 apply_event_to_log(state, &ev);
-                persist_reveal(reveal_log, state, &ev);
             }
             Err(mpsc::error::TryRecvError::Empty) => break,
             Err(mpsc::error::TryRecvError::Disconnected) => {
@@ -601,7 +605,7 @@ fn open_reveal_log(output_dir: &Path) -> Option<std::fs::File> {
         .create(true)
         .append(true)
         .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(&path)
     {
         Ok(f) => Some(f),
@@ -612,16 +616,37 @@ fn open_reveal_log(output_dir: &Path) -> Option<std::fs::File> {
     }
 }
 
+/// Must be called **before** `apply_event` so we can detect `ApUpdated`
+/// events that transition an AP from hidden to unhidden (the CSV parser
+/// often reveals the SSID before tshark's 3-second poll fires).
+///
+/// The `ApUpdated` branch looks up the AP in current state, which requires
+/// the preceding `ApDiscovered` to have been applied already. This holds
+/// because `drain_events` processes each event sequentially (persist →
+/// apply) and the CSV parser emits `ApDiscovered` before `ApUpdated` for
+/// any BSSID, preserved by MPSC FIFO ordering.
 fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &AppEvent) {
     use veilbreak_core::validate::{self, sanitize_display_string};
 
-    let AppEvent::SsidRevealed {
-        bssid,
-        ssid,
-        source,
-    } = event
-    else {
-        return;
+    let (bssid, ssid, source_str) = match event {
+        AppEvent::SsidRevealed {
+            bssid,
+            ssid,
+            source,
+        } => (bssid.as_str(), ssid.as_str(), source.to_string()),
+        AppEvent::ApUpdated(ap) => {
+            let Some(ref ssid) = ap.ssid else { return };
+            match state.access_points.get(&ap.bssid) {
+                Some(existing) if existing.hidden => {}
+                Some(_) => return,
+                None => {
+                    tracing::warn!(bssid = %ap.bssid, "ApUpdated for unknown AP, skipping persist");
+                    return;
+                }
+            }
+            (ap.bssid.as_str(), ssid.as_str(), "csv-update".to_owned())
+        }
+        _ => return,
     };
     if !validate::is_valid_bssid(bssid) {
         return;
@@ -635,7 +660,7 @@ fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &Ap
         elapsed_secs: state.elapsed_secs(),
         bssid,
         ssid: safe_ssid,
-        source: &source.to_string(),
+        source: &source_str,
     };
     if let Err(e) = persist::write_reveal_entry(f, &record) {
         tracing::warn!("failed to write reveal log entry: {e}");

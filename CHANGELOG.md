@@ -84,6 +84,9 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- `revealed.jsonl` now captures SSID reveals from CSV updates (`ApUpdated`), not only tshark's `SsidRevealed` — fixes empty reveal log when airodump-ng's CSV parser discovers the SSID before tshark's 3-second poll fires
+- `diff_and_emit()` now triggers `ApUpdated` on SSID changes, not only power/beacon/channel changes — fixes silent reveal loss when RF conditions are stable
+- Session output directory printed to stderr on exit so the user can find pcap, CSV, and reveal log files
 - `is_root()` now checks effective UID (`geteuid`) instead of real UID for setuid correctness
 - Stderr from failed `iw` commands capped to 512 bytes to prevent log flooding
 - Interfaces with invalid phy names are now rejected during parsing
@@ -122,6 +125,9 @@ All notable changes to this project are documented in this file.
 - **wifi-testlab PID validation**: all PID file reads validated with `^[0-9]+$` before `kill`, preventing `kill -1` (all processes) via corrupted PID file
 - **wifi-testlab interface name validation**: `validate_iface()` enforces `^[a-zA-Z0-9_-]{1,15}$` on all hwsim-derived interface names before use in `iw`/`ip`/`sed` commands
 - **wifi-testlab wpa_supplicant socket restricted**: `ctrl_interface_group=0` limits control socket access to root only
+- **FD leak to child processes closed**: `open_reveal_log` and `init_logging` now set `O_CLOEXEC`, preventing airodump-ng/tshark/aireplay-ng from inheriting the reveal log and session log file descriptors
+- **Output directory TOCTOU eliminated**: `resolve_output_dir` now canonicalizes the path before the `is_dir()` check, closing the symlink-swap window between stat and canonicalize
+- **Session path terminal injection prevented**: output directory path sanitized via `sanitize_display_string()` before printing to stderr on exit
 - **Reveal log symlink attack prevented**: `open_reveal_log` opens `revealed.jsonl` with `O_NOFOLLOW` flag, preventing symlink-based file overwrite when running as root
 - **Log file moved into session directory**: `veilbreak.log` now written to the session output directory (mode `0o700`) instead of fixed `/tmp/veilbreak.log`, eliminating predictable-path hard-link information disclosure
 - **User-supplied output directory canonicalized**: `--output-dir` path is canonicalized via `Path::canonicalize()` immediately after validation, resolving symlink components and `..` traversal before any file operations

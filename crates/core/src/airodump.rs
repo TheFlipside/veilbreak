@@ -260,6 +260,7 @@ pub fn diff_and_emit<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
             if ap.power != existing.power
                 || ap.beacon_count != existing.beacon_count
                 || ap.channel != existing.channel
+                || ap.ssid != existing.ssid
             {
                 Some(AppEvent::ApUpdated(ap.clone()))
             } else {
