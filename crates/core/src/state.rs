@@ -66,16 +66,26 @@ impl AppState {
                 }
             }
             AppEvent::ApUpdated(ap) => {
+                if !validate::is_valid_bssid(&ap.bssid) {
+                    return;
+                }
                 if let Some(entry) = self.access_points.get_mut(&ap.bssid) {
                     entry.power = ap.power;
                     entry.channel = ap.channel;
                     entry.beacon_count = ap.beacon_count;
                     entry.encryption = validate::sanitize_display_string(&ap.encryption);
                     if let Some(ssid) = &ap.ssid {
-                        entry.ssid = Some(validate::sanitize_display_string(
-                            validate::truncate_utf8(ssid, validate::MAX_ESSID_LEN),
+                        let sanitized = validate::sanitize_display_string(validate::truncate_utf8(
+                            ssid,
+                            validate::MAX_ESSID_LEN,
                         ));
-                        entry.hidden = false;
+                        if !sanitized.is_empty() {
+                            if entry.hidden {
+                                entry.revealed = true;
+                            }
+                            entry.ssid = Some(sanitized);
+                            entry.hidden = false;
+                        }
                     }
                 }
             }
@@ -104,8 +114,13 @@ impl AppState {
                         ssid,
                         validate::MAX_ESSID_LEN,
                     ));
-                    ap.ssid = Some(sanitized);
-                    ap.hidden = false;
+                    if !sanitized.is_empty() {
+                        if ap.hidden {
+                            ap.revealed = true;
+                        }
+                        ap.ssid = Some(sanitized);
+                        ap.hidden = false;
+                    }
                 }
             }
             AppEvent::CaptureSize(size) => {
@@ -176,6 +191,8 @@ pub struct AccessPoint {
     pub beacon_count: u64,
     /// Whether the AP advertises a hidden SSID.
     pub hidden: bool,
+    /// Whether the AP was initially hidden and later had its SSID revealed.
+    pub revealed: bool,
 }
 
 /// A client station associated to an access point.

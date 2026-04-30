@@ -296,7 +296,8 @@ pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterStat
     let hidden_value = if filter.hidden_only { "ON" } else { "OFF" };
 
     let items = vec![
-        ListItem::new(format!("{hidden_prefix}Hidden only:  {hidden_value}")).style(hidden_style),
+        ListItem::new(format!("{hidden_prefix}Hidden/revealed:  {hidden_value}"))
+            .style(hidden_style),
         ListItem::new(format!("{band_prefix}Band:  {}", filter.band.label())).style(band_style),
         ListItem::new(""),
         ListItem::new(Line::from(vec![

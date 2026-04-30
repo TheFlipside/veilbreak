@@ -136,7 +136,7 @@ pub enum Modal {
 /// Persistent filter state for the AP list.
 #[derive(Debug, Default)]
 pub struct FilterState {
-    /// Show only hidden (unrevealed) APs.
+    /// Show only APs that are currently hidden or were revealed during this session.
     pub hidden_only: bool,
     /// Band filter.
     pub band: BandFilter,
@@ -146,7 +146,7 @@ impl FilterState {
     /// Returns `true` if the access point passes all active filters.
     #[must_use]
     pub const fn matches(&self, ap: &veilbreak_core::state::AccessPoint) -> bool {
-        if self.hidden_only && !ap.hidden {
+        if self.hidden_only && !ap.hidden && !ap.revealed {
             return false;
         }
         match self.band {

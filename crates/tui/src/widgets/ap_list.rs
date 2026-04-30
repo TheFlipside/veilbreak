@@ -1,7 +1,7 @@
 //! Access point list pane (left panel of the dashboard).
 
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, HighlightSpacing, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table};
 use veilbreak_core::state::AccessPoint;
 
 use crate::app::{DashboardState, FocusPane};
@@ -43,18 +43,19 @@ pub fn draw(
     let rows: Vec<Row> = sorted
         .iter()
         .map(|&(_, ap)| {
-            let ssid_display = ap
-                .ssid
-                .as_deref()
-                .unwrap_or(if ap.hidden { "<hid>" } else { "" });
+            let (ssid_display, ssid_style) = match (ap.ssid.as_deref(), ap.revealed) {
+                (Some(s), true) => (s, theme::REVEALED),
+                (Some(s), false) => (s, Style::default()),
+                (None, _) => (if ap.hidden { "<hid>" } else { "" }, Style::default()),
+            };
             Row::new(vec![
-                ap.bssid.clone(),
-                ap.channel.to_string(),
-                ap.power.to_string(),
-                ap.encryption.clone(),
-                ap.clients.len().to_string(),
-                ap.beacon_count.to_string(),
-                ssid_display.to_owned(),
+                Cell::from(ap.bssid.clone()),
+                Cell::from(ap.channel.to_string()),
+                Cell::from(ap.power.to_string()),
+                Cell::from(ap.encryption.clone()),
+                Cell::from(ap.clients.len().to_string()),
+                Cell::from(ap.beacon_count.to_string()),
+                Cell::from(ssid_display.to_owned()).style(ssid_style),
             ])
         })
         .collect();

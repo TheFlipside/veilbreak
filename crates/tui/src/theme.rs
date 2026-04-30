@@ -26,5 +26,8 @@ pub const KEYBIND_KEY: Style = Style::new().fg(Color::Cyan);
 /// Keybind description text.
 pub const KEYBIND_DESC: Style = Style::new().fg(Color::DarkGray);
 
+/// Revealed SSID (was hidden, now known).
+pub const REVEALED: Style = Style::new().fg(Color::Green);
+
 /// Dimmed placeholder text.
 pub const DIM: Style = Style::new().fg(Color::DarkGray);

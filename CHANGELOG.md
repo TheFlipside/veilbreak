@@ -21,6 +21,8 @@ All notable changes to this project are documented in this file.
 - `Modal` enum generalizing deauth, filter, and help overlays (replaces `Option<DeauthModal>`)
 - `FilterState` and `BandFilter` types on `DashboardState` with `matches()` predicate for AP filtering
 - `FILTER_ROW_COUNT` constant in input handler for maintainable filter modal navigation bounds
+- `AccessPoint::revealed` field: tracks APs that were initially hidden and later had their SSID revealed during the session
+- `theme::REVEALED` style (green): visually distinguishes revealed SSIDs in AP list and detail pane
 - `core::persist` module: `RevealRecord` struct and `write_reveal_entry()` NDJSON serializer for revealed-SSID logging
 - `PersistError` error type with `Io` and `Serialize` variants, registered in `core::Error`
 - `revealed.jsonl` persistence: each `SsidRevealed` event appends an NDJSON record to the session output directory
@@ -132,6 +134,8 @@ All notable changes to this project are documented in this file.
 - **Log file moved into session directory**: `veilbreak.log` now written to the session output directory (mode `0o700`) instead of fixed `/tmp/veilbreak.log`, eliminating predictable-path hard-link information disclosure
 - **User-supplied output directory canonicalized**: `--output-dir` path is canonicalized via `Path::canonicalize()` immediately after validation, resolving symlink components and `..` traversal before any file operations
 - **Band filter guards unknown channels**: `FilterState::matches` rejects `channel == 0` (unknown) from the 2.4 GHz filter to prevent false positives
+- **Empty-SSID reveal guard**: `ApUpdated` and `SsidRevealed` handlers reject empty SSIDs (after sanitization) before flipping `revealed`/`hidden` state, preventing blank-SSID APs from being permanently marked as revealed
+- **BSSID validation on `ApUpdated`**: `apply_event` now validates BSSID format before processing `ApUpdated` events, matching the defense-in-depth pattern of all other event handlers
 
 ### Changed
 
@@ -156,6 +160,9 @@ All notable changes to this project are documented in this file.
 - `init_logging()` now accepts `&Path` and writes log file into the session output directory
 - Output directory resolution extracted from `run_tui()` into `resolve_output_dir()`, called before logging init
 - AP list in dashboard filtered through `FilterState::matches()` before rendering
+- `FilterState::matches` hidden-only filter now includes revealed APs (previously they vanished from the filtered view on reveal)
+- Filter modal label changed from "Hidden only" to "Hidden/revealed" to reflect the updated filter semantics
+- Detail pane SSID display: revealed SSIDs show `"{name} (revealed)"` in green; hidden shows `"<hidden>"` in dim; removed redundant re-sanitization (fields are pre-sanitized at state write time)
 - DESIGN.md Phase 5 updated to reflect implemented features; channel locking and configurable theme moved to Out of Scope
 
 ### 0.1.0 - 2026-04-29

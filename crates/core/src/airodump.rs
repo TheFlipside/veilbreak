@@ -191,6 +191,8 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
             clients: HashMap::new(),
             beacon_count: beacons,
             hidden,
+            // `revealed` is managed by AppState; the parser always produces false.
+            revealed: false,
         });
     }
 
