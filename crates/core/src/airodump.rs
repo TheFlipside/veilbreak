@@ -151,21 +151,25 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
             continue;
         }
 
-        let channel = fields[3].trim().parse::<u32>().unwrap_or_else(|_| {
-            tracing::debug!("malformed channel for BSSID {bssid}");
+        let ch_raw = fields[3].trim();
+        let channel = ch_raw.parse::<u32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed channel {:?} for BSSID {bssid}", ch_raw);
             0
         });
         let privacy = validate::sanitize_display_string(fields[5].trim());
-        let power = fields[8].trim().parse::<i32>().unwrap_or_else(|_| {
-            tracing::debug!("malformed power for BSSID {bssid}");
+        let pwr_raw = fields[8].trim();
+        let power = pwr_raw.parse::<i32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed power {:?} for BSSID {bssid}", pwr_raw);
             0
         });
-        let beacons = fields[9].trim().parse::<u64>().unwrap_or_else(|_| {
-            tracing::debug!("malformed beacon count for BSSID {bssid}");
+        let bcn_raw = fields[9].trim();
+        let beacons = bcn_raw.parse::<u64>().unwrap_or_else(|_| {
+            tracing::debug!("malformed beacon count {:?} for BSSID {bssid}", bcn_raw);
             0
         });
-        let id_length = fields[12].trim().parse::<u32>().unwrap_or_else(|_| {
-            tracing::debug!("malformed ID-length for BSSID {bssid}");
+        let idl_raw = fields[12].trim();
+        let id_length = idl_raw.parse::<u32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed ID-length {:?} for BSSID {bssid}", idl_raw);
             0
         });
         let essid = fields[13].trim();
@@ -215,8 +219,9 @@ fn parse_client_section(section: &str) -> Vec<Client> {
             continue;
         }
 
-        let power = fields[3].trim().parse::<i32>().unwrap_or_else(|_| {
-            tracing::debug!("malformed power for client {mac}");
+        let pwr_raw = fields[3].trim();
+        let power = pwr_raw.parse::<i32>().unwrap_or_else(|_| {
+            tracing::debug!("malformed power {:?} for client {mac}", pwr_raw);
             0
         });
         let bssid = fields[5].trim();
@@ -509,7 +514,8 @@ async fn csv_watch_loop(path: PathBuf, tx: mpsc::Sender<AppEvent>) {
             continue;
         };
 
-        let size = u64::try_from(content.len()).unwrap_or(u64::MAX);
+        // usize fits in u64 on all supported targets; Err arm is unreachable.
+        let size = u64::try_from(content.len()).unwrap_or(0);
         let snapshot = parse_csv(&content);
         diff_and_emit(&snapshot, &known.aps, &known.clients, &tx);
 
