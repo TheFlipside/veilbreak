@@ -20,8 +20,6 @@ const MAX_DEAUTH_COUNT: u32 = 128;
 const MAX_STDERR_LEN: usize = 512;
 /// Sentinel for processes killed by a signal (no exit code available).
 const UNKNOWN_EXIT_STATUS: i32 = -1;
-/// Upper bound for valid Wi-Fi channel numbers.
-const MAX_CHANNEL: u32 = 200;
 
 /// Specifies the target for a deauthentication attack.
 #[derive(Debug, Clone)]
@@ -149,7 +147,7 @@ pub async fn run_deauth(
     }
 
     let channel = target.channel();
-    if channel == 0 || channel > MAX_CHANNEL {
+    if !validate::is_valid_channel(channel) {
         return Err(AireplayError::InvalidArgument(format!(
             "invalid channel: {channel}"
         )));

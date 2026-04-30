@@ -795,6 +795,22 @@ mod tests {
         assert_eq!(snap.clients[0].bssid, "AA:BB:CC:00:11:20");
     }
 
+    #[test]
+    fn invalid_channel_becomes_none() {
+        let input = "\nBSSID, First time seen, Last time seen, channel, Speed, Privacy, Cipher, Authentication, Power, # beacons, # IV, LAN IP, ID-length, ESSID, Key\nAA:BB:CC:DD:EE:FF, 2025-01-15, 2025-01-15, 0, 54e, WPA2, CCMP, PSK, -42, 10, 0, 0.0.0.0, 7, TestNet,\n";
+        let snap = parse_csv(input);
+        assert_eq!(snap.access_points.len(), 1);
+        assert_eq!(snap.access_points[0].channel, None);
+    }
+
+    #[test]
+    fn out_of_range_channel_becomes_none() {
+        let input = "\nBSSID, First time seen, Last time seen, channel, Speed, Privacy, Cipher, Authentication, Power, # beacons, # IV, LAN IP, ID-length, ESSID, Key\nAA:BB:CC:DD:EE:FF, 2025-01-15, 2025-01-15, 999, 54e, WPA2, CCMP, PSK, -42, 10, 0, 0.0.0.0, 7, TestNet,\n";
+        let snap = parse_csv(input);
+        assert_eq!(snap.access_points.len(), 1);
+        assert_eq!(snap.access_points[0].channel, None);
+    }
+
     const IW_DEV_FIXTURE: &str = include_str!("../../../tests/fixtures/iw_dev.txt");
 
     #[test]

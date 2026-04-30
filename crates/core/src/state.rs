@@ -74,7 +74,9 @@ impl AppState {
                 }
                 if let Some(entry) = self.access_points.get_mut(&ap.bssid) {
                     entry.power = ap.power;
-                    entry.channel = ap.channel;
+                    if ap.channel.is_some() {
+                        entry.channel = ap.channel;
+                    }
                     entry.beacon_count = ap.beacon_count;
                     entry.encryption = validate::sanitize_display_string(&ap.encryption);
                     if let Some(ssid) = &ap.ssid {
@@ -284,5 +286,37 @@ mod tests {
         state.apply_event(&AppEvent::ChannelChanged(6));
         state.apply_event(&AppEvent::ChannelChanged(11));
         assert_eq!(state.current_channel, Some(11));
+    }
+
+    fn make_ap(channel: Option<u32>) -> AccessPoint {
+        AccessPoint {
+            bssid: "AA:BB:CC:DD:EE:FF".to_owned(),
+            ssid: Some("TestNet".to_owned()),
+            channel,
+            power: -42,
+            encryption: "WPA2".to_owned(),
+            clients: std::collections::HashMap::new(),
+            beacon_count: 10,
+            hidden: false,
+            revealed: false,
+        }
+    }
+
+    #[test]
+    fn ap_update_preserves_channel_when_new_is_none() {
+        let mut state = AppState::new();
+        state.apply_event(&AppEvent::ApDiscovered(make_ap(Some(6))));
+        assert_eq!(state.access_points["AA:BB:CC:DD:EE:FF"].channel, Some(6));
+
+        state.apply_event(&AppEvent::ApUpdated(make_ap(None)));
+        assert_eq!(state.access_points["AA:BB:CC:DD:EE:FF"].channel, Some(6),);
+    }
+
+    #[test]
+    fn ap_update_overwrites_channel_when_new_is_some() {
+        let mut state = AppState::new();
+        state.apply_event(&AppEvent::ApDiscovered(make_ap(Some(6))));
+        state.apply_event(&AppEvent::ApUpdated(make_ap(Some(11))));
+        assert_eq!(state.access_points["AA:BB:CC:DD:EE:FF"].channel, Some(11),);
     }
 }
