@@ -7,11 +7,17 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - `wifi-testlab/`: virtual WiFi lab using `mac80211_hwsim` for developing and testing veilbreak without physical hardware
-  - `setup.sh`: lab lifecycle management (`--up`, `--down`, `--status`, `--restart`) — creates three virtual radios, isolates AP and client in network namespaces, enables monitor mode
-  - `verify.sh`: 5-check smoke test confirming kernel module, services, client association, and monitor mode
+  - `setup.sh`: lab lifecycle management (`--up`, `--down`, `--status`, `--restart`) — creates six virtual radios, isolates APs and client in network namespaces, enables monitor mode
+  - `verify.sh`: smoke test confirming kernel module, services (hidden + 3 visible APs), client association, and monitor mode
   - `configs/hostapd.conf`: hidden AP configuration (`ignore_broadcast_ssid=1`, WPA2-PSK, channel 6)
+  - `configs/hostapd-tplink.conf`: visible AP — TP-LINK_8907_5G (WPA2, channel 11)
+  - `configs/hostapd-ddw.conf`: visible AP — DDW36563 (WPA2, channel 1)
+  - `configs/hostapd-suddenlink.conf`: visible AP — SuddenLink990 (WPA2, channel 6)
   - `configs/wpa_supplicant.conf`: client configuration with `scan_ssid=1` for active probing
   - `GUIDE.md`: detailed usage walkthrough and architecture documentation
+- `demo.gif`: animated demo showing AP discovery, hidden-SSID reveal via deauth, and filter/sort features
+- `demo.tape`: VHS tape script for reproducing `demo.gif` against the wifi-testlab
+- `RECORDING.md`: step-by-step guide for recording the demo GIF (VHS, Go, testlab setup, sudoers, troubleshooting)
 - `Band` enum in `core::airodump` with `Bg`, `A`, `Abg` variants and `as_arg()`, `label()`, `next()` accessors
 - `--band <BAND>` CLI flag: select Wi-Fi band (`bg`, `a`, `abg`) without interactive prompt; defaults to `bg` (2.4 GHz)
 - `SetupScreen::BandSelect` step in setup flow: interactive band selection between interface pick and mode confirm
@@ -126,6 +132,9 @@ All notable changes to this project are documented in this file.
 - **wifi-testlab run directory hardened**: `.run/` created with mode `0700`, `interfaces` file set to `0600`; prevents local information disclosure of interface names and PIDs
 - **wifi-testlab PID validation**: all PID file reads validated with `^[0-9]+$` before `kill`, preventing `kill -1` (all processes) via corrupted PID file
 - **wifi-testlab interface name validation**: `validate_iface()` enforces `^[a-zA-Z0-9_-]{1,15}$` on all hwsim-derived interface names before use in `iw`/`ip`/`sed` commands
+- **wifi-testlab generated configs hardened**: runtime hostapd configs in `.run/` set to `0600` permissions, preventing local information disclosure of AP configuration including PSK
+- **wifi-testlab BSSID display validated**: `verify.sh` validates BSSID from `iw` output against `^([0-9A-F]{2}:){5}[0-9A-F]{2}$` before display
+- **wifi-testlab cleanup trap**: `lab_up` installs `trap lab_down EXIT` before forking subprocesses, preventing orphaned processes on unexpected script termination
 - **wifi-testlab wpa_supplicant socket restricted**: `ctrl_interface_group=0` limits control socket access to root only
 - **FD leak to child processes closed**: `open_reveal_log` and `init_logging` now set `O_CLOEXEC`, preventing airodump-ng/tshark/aireplay-ng from inheriting the reveal log and session log file descriptors
 - **Output directory TOCTOU eliminated**: `resolve_output_dir` now canonicalizes the path before the `is_dir()` check, closing the symlink-swap window between stat and canonicalize
@@ -164,6 +173,8 @@ All notable changes to this project are documented in this file.
 - Filter modal label changed from "Hidden only" to "Hidden/revealed" to reflect the updated filter semantics
 - Detail pane SSID display: revealed SSIDs show `"{name} (revealed)"` in green; hidden shows `"<hidden>"` in dim; removed redundant re-sanitization (fields are pre-sanitized at state write time)
 - DESIGN.md Phase 5 updated to reflect implemented features; channel locking and configurable theme moved to Out of Scope
+- README.md: screenshot placeholder replaced with `demo.gif` embed
+- wifi-testlab expanded from 3 to 6 virtual radios: 3 visible APs (TP-LINK_8907_5G ch 11, DDW36563 ch 1, SuddenLink990 ch 6) alongside the hidden AP, for a realistic multi-AP demo environment
 
 ### 0.1.0 - 2026-04-29
 

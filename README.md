@@ -5,7 +5,7 @@ keyboard-driven dashboard. It orchestrates `airodump-ng`, `tshark`, and
 `aireplay-ng` behind the scenes, replacing the manual multi-terminal workflow of
 monitoring, analyzing, and injecting with one unified interface.
 
-<!-- screenshot placeholder -->
+![Veilbreak revealing a hidden SSID](demo.gif)
 
 ## Disclaimer
 

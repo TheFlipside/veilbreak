@@ -56,12 +56,26 @@ else
     fail_check "mac80211_hwsim not loaded"
 fi
 
-# 2. hostapd
+# 2. hostapd (hidden AP)
 pid=$(read_pid "$RUNDIR/hostapd.pid" || true)
 if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    pass "hostapd running"
+    pass "hostapd (hidden) running"
 else
-    fail_check "hostapd not running"
+    fail_check "hostapd (hidden) not running"
+fi
+
+# 2b. hostapd (visible APs)
+vis_running=0
+for vis_name in tplink ddw suddenlink; do
+    pid=$(read_pid "$RUNDIR/hostapd-${vis_name}.pid" || true)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        vis_running=$((vis_running + 1))
+    fi
+done
+if [[ $vis_running -eq 3 ]]; then
+    pass "$vis_running/3 visible APs running"
+else
+    fail_check "$vis_running/3 visible APs running"
 fi
 
 # 3. wpa_supplicant
@@ -94,16 +108,20 @@ fi
 # Grab AP BSSID for reference.
 ap_bssid=""
 if [[ -n "${IFACE_AP:-}" ]]; then
-    ap_bssid=$(ip netns exec "$NS_AP" iw dev "$IFACE_AP" info 2>/dev/null \
+    raw_bssid=$(ip netns exec "$NS_AP" iw dev "$IFACE_AP" info 2>/dev/null \
         | awk '/addr/{print $2}' \
         | tr '[:lower:]' '[:upper:]')
+    if [[ "$raw_bssid" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
+        ap_bssid="$raw_bssid"
+    fi
 fi
 
 echo
 if [[ $failed -eq 0 ]]; then
     ok "all $passed checks passed"
     echo
-    info "hidden SSID:   VeilbreakLab"
+    info "hidden SSID:   VeilbreakLab (ch 6)"
+    info "visible SSIDs: TP-LINK_8907_5G (ch 11), DDW36563 (ch 1), SuddenLink990 (ch 6)"
     [[ -n "$ap_bssid" ]] && info "AP BSSID:      $ap_bssid"
     info "monitor:       ${IFACE_MONITOR:-unknown}"
     echo

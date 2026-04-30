@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # wifi-testlab/setup.sh — virtual WiFi lab using mac80211_hwsim
 #
-# Creates three virtual radios:
+# Creates six virtual radios:
 #   phy_ap      → hostapd (hidden AP)     in vb-ap namespace
 #   phy_client  → wpa_supplicant (client) in vb-client namespace
 #   phy_monitor → monitor mode            in default namespace (for veilbreak)
+#   phy_vis1-3  → hostapd (visible APs)   in vb-ap namespace
 #
 # Usage:
 #   sudo ./setup.sh             start the lab
@@ -18,7 +19,7 @@ RUNDIR="$SCRIPT_DIR/.run"
 CONF_DIR="$SCRIPT_DIR/configs"
 NS_AP="vb-ap"
 NS_CLIENT="vb-client"
-HWSIM_RADIOS=3
+HWSIM_RADIOS=6
 
 # ── Output helpers ─────────────────────────────────────────────────────
 
@@ -56,12 +57,18 @@ load_interfaces() {
     while IFS='=' read -r key val; do
         [[ "$val" =~ ^[a-zA-Z0-9_-]{1,15}$ ]] || continue
         case "$key" in
-            PHY_AP)       PHY_AP="$val" ;;
-            PHY_CLIENT)   PHY_CLIENT="$val" ;;
-            PHY_MONITOR)  PHY_MONITOR="$val" ;;
-            IFACE_AP)     IFACE_AP="$val" ;;
-            IFACE_CLIENT) IFACE_CLIENT="$val" ;;
+            PHY_AP)        PHY_AP="$val" ;;
+            PHY_CLIENT)    PHY_CLIENT="$val" ;;
+            PHY_MONITOR)   PHY_MONITOR="$val" ;;
+            IFACE_AP)      IFACE_AP="$val" ;;
+            IFACE_CLIENT)  IFACE_CLIENT="$val" ;;
             IFACE_MONITOR) IFACE_MONITOR="$val" ;;
+            PHY_VIS1)      PHY_VIS1="$val" ;;
+            PHY_VIS2)      PHY_VIS2="$val" ;;
+            PHY_VIS3)      PHY_VIS3="$val" ;;
+            IFACE_VIS1)    IFACE_VIS1="$val" ;;
+            IFACE_VIS2)    IFACE_VIS2="$val" ;;
+            IFACE_VIS3)    IFACE_VIS3="$val" ;;
         esac
     done < "$file"
 }
@@ -112,6 +119,9 @@ lab_up() {
     mkdir -p "$RUNDIR"
     chmod 700 "$RUNDIR"
 
+    # Clean up on unexpected exit (e.g. SIGINT during setup).
+    trap lab_down EXIT
+
     # ── Load virtual radios ────────────────────────────────────────────
 
     info "loading mac80211_hwsim (radios=$HWSIM_RADIOS)"
@@ -128,17 +138,27 @@ lab_up() {
     local phy_ap="${phys[0]}"
     local phy_client="${phys[1]}"
     local phy_monitor="${phys[2]}"
+    local phy_vis1="${phys[3]}"
+    local phy_vis2="${phys[4]}"
+    local phy_vis3="${phys[5]}"
 
-    local iface_ap iface_client iface_monitor
+    local iface_ap iface_client iface_monitor iface_vis1 iface_vis2 iface_vis3
     iface_ap="$(iface_for_phy "$phy_ap")"
     iface_client="$(iface_for_phy "$phy_client")"
     iface_monitor="$(iface_for_phy "$phy_monitor")"
+    iface_vis1="$(iface_for_phy "$phy_vis1")"
+    iface_vis2="$(iface_for_phy "$phy_vis2")"
+    iface_vis3="$(iface_for_phy "$phy_vis3")"
 
     validate_iface "${iface_ap:?no interface for $phy_ap}"
     validate_iface "${iface_client:?no interface for $phy_client}"
     validate_iface "${iface_monitor:?no interface for $phy_monitor}"
+    validate_iface "${iface_vis1:?no interface for $phy_vis1}"
+    validate_iface "${iface_vis2:?no interface for $phy_vis2}"
+    validate_iface "${iface_vis3:?no interface for $phy_vis3}"
 
     ok "radios: AP=$phy_ap/$iface_ap  client=$phy_client/$iface_client  monitor=$phy_monitor/$iface_monitor"
+    ok "visible APs: $phy_vis1/$iface_vis1  $phy_vis2/$iface_vis2  $phy_vis3/$iface_vis3"
 
     # Persist mapping so verify.sh and --down can find the interfaces.
     cat > "$RUNDIR/interfaces" <<EOF
@@ -148,13 +168,20 @@ PHY_CLIENT=$phy_client
 IFACE_CLIENT=$iface_client
 PHY_MONITOR=$phy_monitor
 IFACE_MONITOR=$iface_monitor
+PHY_VIS1=$phy_vis1
+IFACE_VIS1=$iface_vis1
+PHY_VIS2=$phy_vis2
+IFACE_VIS2=$iface_vis2
+PHY_VIS3=$phy_vis3
+IFACE_VIS3=$iface_vis3
 EOF
     chmod 600 "$RUNDIR/interfaces"
 
     # ── Prevent NetworkManager interference ────────────────────────────
 
     if command -v nmcli &>/dev/null; then
-        for iface in "$iface_ap" "$iface_client" "$iface_monitor"; do
+        for iface in "$iface_ap" "$iface_client" "$iface_monitor" \
+                     "$iface_vis1" "$iface_vis2" "$iface_vis3"; do
             nmcli device set "$iface" managed no 2>/dev/null || true
         done
     fi
@@ -166,7 +193,11 @@ EOF
 
     iw phy "$phy_ap" set netns name "$NS_AP"
     iw phy "$phy_client" set netns name "$NS_CLIENT"
+    iw phy "$phy_vis1" set netns name "$NS_AP"
+    iw phy "$phy_vis2" set netns name "$NS_AP"
+    iw phy "$phy_vis3" set netns name "$NS_AP"
     ok "isolated: $phy_ap -> $NS_AP, $phy_client -> $NS_CLIENT"
+    ok "isolated: $phy_vis1, $phy_vis2, $phy_vis3 -> $NS_AP"
 
     # ── Start hostapd (hidden AP) ──────────────────────────────────────
 
@@ -176,6 +207,7 @@ EOF
     # actual name discovered from hwsim.
     sed "s|^interface=.*|interface=$iface_ap|" "$CONF_DIR/hostapd.conf" \
         > "$RUNDIR/hostapd.conf"
+    chmod 600 "$RUNDIR/hostapd.conf"
 
     info "starting hostapd (hidden SSID on channel 6)"
     ip netns exec "$NS_AP" hostapd -B \
@@ -192,6 +224,38 @@ EOF
     else
         die "hostapd failed to start — check dmesg and kernel support"
     fi
+
+    # ── Start visible APs ────────────────────────────────────────────────
+
+    local vis_configs=("hostapd-tplink:$iface_vis1" "hostapd-ddw:$iface_vis2" "hostapd-suddenlink:$iface_vis3")
+    for entry in "${vis_configs[@]}"; do
+        local conf_name="${entry%%:*}"
+        local vis_iface="${entry##*:}"
+
+        ip netns exec "$NS_AP" ip link set "$vis_iface" up
+
+        sed "s|^interface=.*|interface=$vis_iface|" "$CONF_DIR/${conf_name}.conf" \
+            > "$RUNDIR/${conf_name}.conf"
+        chmod 600 "$RUNDIR/${conf_name}.conf"
+
+        ip netns exec "$NS_AP" hostapd -B \
+            -P "$RUNDIR/${conf_name}.pid" \
+            "$RUNDIR/${conf_name}.conf"
+    done
+    sleep 1
+
+    local vis_running=0
+    for entry in "${vis_configs[@]}"; do
+        local conf_name="${entry%%:*}"
+        local vis_pid=""
+        if [[ -f "$RUNDIR/${conf_name}.pid" ]]; then
+            vis_pid="$(<"$RUNDIR/${conf_name}.pid")"
+        fi
+        if [[ "$vis_pid" =~ ^[0-9]+$ ]] && kill -0 "$vis_pid" 2>/dev/null; then
+            vis_running=$((vis_running + 1))
+        fi
+    done
+    ok "$vis_running/3 visible APs running"
 
     # ── Start wpa_supplicant (client) ──────────────────────────────────
 
@@ -244,17 +308,24 @@ EOF
     ok "wifi-testlab is up"
     echo
     info "monitor interface:  $iface_monitor"
-    info "hidden SSID:        VeilbreakLab"
+    info "hidden SSID:        VeilbreakLab (ch 6)"
+    info "visible SSIDs:      TP-LINK_8907_5G (ch 11), DDW36563 (ch 1), SuddenLink990 (ch 6)"
     info "run veilbreak:      sudo cargo run -p veilbreak-tui"
     info "  -> select '$iface_monitor' when prompted"
     info "stop lab:           sudo $0 --down"
+
+    # Setup succeeded — disarm the cleanup trap.
+    trap - EXIT
 }
 
 lab_down() {
     check_root
 
     kill_by_pidfile "$RUNDIR/ping.pid" "ping"
-    kill_by_pidfile "$RUNDIR/hostapd.pid" "hostapd"
+    kill_by_pidfile "$RUNDIR/hostapd.pid" "hostapd (hidden)"
+    kill_by_pidfile "$RUNDIR/hostapd-tplink.pid" "hostapd (TP-LINK_8907_5G)"
+    kill_by_pidfile "$RUNDIR/hostapd-ddw.pid" "hostapd (DDW36563)"
+    kill_by_pidfile "$RUNDIR/hostapd-suddenlink.pid" "hostapd (SuddenLink990)"
     kill_by_pidfile "$RUNDIR/wpa_supplicant.pid" "wpa_supplicant"
 
     # Deleting namespaces returns their phys to the default namespace.
@@ -296,17 +367,25 @@ lab_status() {
     info "AP:       ${PHY_AP:-?} / ${IFACE_AP:-?}  (namespace $NS_AP)"
     info "client:   ${PHY_CLIENT:-?} / ${IFACE_CLIENT:-?}  (namespace $NS_CLIENT)"
     info "monitor:  ${PHY_MONITOR:-?} / ${IFACE_MONITOR:-?}  (default namespace)"
+    info "visible:  ${PHY_VIS1:-?}/${IFACE_VIS1:-?}  ${PHY_VIS2:-?}/${IFACE_VIS2:-?}  ${PHY_VIS3:-?}/${IFACE_VIS3:-?}  (namespace $NS_AP)"
 
-    for svc in hostapd wpa_supplicant; do
+    local -A svc_labels=(
+        ["hostapd"]="hostapd (hidden)"
+        ["hostapd-tplink"]="hostapd (TP-LINK_8907_5G)"
+        ["hostapd-ddw"]="hostapd (DDW36563)"
+        ["hostapd-suddenlink"]="hostapd (SuddenLink990)"
+        ["wpa_supplicant"]="wpa_supplicant"
+    )
+    for svc in hostapd hostapd-tplink hostapd-ddw hostapd-suddenlink wpa_supplicant; do
         local pidfile="$RUNDIR/$svc.pid"
         local pid=""
         if [[ -f "$pidfile" ]]; then
             pid="$(<"$pidfile")"
         fi
         if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-            ok "$svc running (PID $pid)"
+            ok "${svc_labels[$svc]} running (PID $pid)"
         else
-            warn "$svc not running"
+            warn "${svc_labels[$svc]} not running"
         fi
     done
 
