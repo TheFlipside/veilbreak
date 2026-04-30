@@ -116,7 +116,9 @@ pub struct CsvSnapshot {
 pub fn parse_csv(input: &str) -> CsvSnapshot {
     let mut snapshot = CsvSnapshot::default();
 
-    let mut sections = input.split("\n\n");
+    // airodump-ng uses \r\n line endings regardless of platform.
+    let normalized = input.replace('\r', "");
+    let mut sections = normalized.split("\n\n");
     if let Some(ap_section) = sections.next() {
         snapshot.access_points = parse_ap_section(ap_section);
     }
@@ -142,7 +144,10 @@ fn parse_ap_section(section: &str) -> Vec<AccessPoint> {
 
         let bssid = fields[0].trim();
         if !validate::is_valid_bssid(bssid) {
-            tracing::warn!("invalid BSSID in airodump CSV, skipping: {bssid}");
+            tracing::warn!(
+                "invalid BSSID in airodump CSV, skipping: {}",
+                validate::sanitize_display_string(bssid),
+            );
             continue;
         }
 
@@ -191,7 +196,10 @@ fn parse_client_section(section: &str) -> Vec<Client> {
 
         let mac = fields[0].trim();
         if !validate::is_valid_bssid(mac) {
-            tracing::warn!("invalid client MAC in airodump CSV, skipping: {mac}");
+            tracing::warn!(
+                "invalid client MAC in airodump CSV, skipping: {}",
+                validate::sanitize_display_string(mac),
+            );
             continue;
         }
 
@@ -462,7 +470,11 @@ async fn drain_stderr(stderr: tokio::process::ChildStderr) {
     let mut lines = BufReader::new(stderr).lines();
     loop {
         match lines.next_line().await {
-            Ok(Some(line)) => tracing::debug!(target: "airodump_stderr", "{line}"),
+            Ok(Some(line)) => tracing::debug!(
+                target: "airodump_stderr",
+                "{}",
+                validate::sanitize_display_string(&line),
+            ),
             Ok(None) => break,
             Err(e) => {
                 tracing::warn!("airodump stderr read error: {e}");
@@ -686,5 +698,14 @@ mod tests {
         let open = open.unwrap();
         assert_eq!(open.bssid, "CA:FE:BA:BE:00:02");
         assert!(!open.hidden);
+    }
+
+    #[test]
+    fn parses_crlf_line_endings() {
+        let crlf = FIXTURE.replace('\n', "\r\n");
+        let snap = parse_csv(&crlf);
+        assert_eq!(snap.access_points.len(), 5);
+        assert_eq!(snap.clients.len(), 5);
+        assert_eq!(snap.clients[0].bssid, "AA:BB:CC:00:11:20");
     }
 }
