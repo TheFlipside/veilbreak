@@ -247,6 +247,14 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     let (mut screen, mut detect_task) = initial_screen_and_task(replay.as_deref(), band);
     let mut tick: u8 = 0;
 
+    if let Some(ref pcap_path) = replay {
+        session_spawn_attempted = true;
+        if let Err(e) = load_replay(pcap_path, &tx, &mut state, &mut tshark_ctrl).await {
+            state.log_event(format!("replay failed: {e}"));
+            tracing::error!("replay load failed: {e:#}");
+        }
+    }
+
     loop {
         deauth_guard.prune();
         terminal.draw(|frame| ui::draw(frame, &mut screen, &state, tick))?;
@@ -258,27 +266,9 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
 
         tokio::select! {
             Some(event) = rx.recv() => {
-                state.apply_event(&event);
-                apply_event_to_log(&mut state, &event);
-                persist_reveal(&mut reveal_log, &state, &event);
-                let mut hidden_set_changed = changes_hidden_set(&event);
-                // Drain up to a bounded number of queued events per frame
-                // to prevent starving the terminal input arm.
-                for _ in 0..64 {
-                    match rx.try_recv() {
-                        Ok(ev) => {
-                            hidden_set_changed |= changes_hidden_set(&ev);
-                            state.apply_event(&ev);
-                            apply_event_to_log(&mut state, &ev);
-                            persist_reveal(&mut reveal_log, &state, &ev);
-                        }
-                        Err(mpsc::error::TryRecvError::Empty) => break,
-                        Err(mpsc::error::TryRecvError::Disconnected) => {
-                            tracing::error!("event channel closed unexpectedly");
-                            return Err(anyhow::anyhow!("event channel closed"));
-                        }
-                    }
-                }
+                let hidden_set_changed = drain_events(
+                    &mut rx, &event, &mut state, &mut reveal_log,
+                )?;
                 if hidden_set_changed
                     && let Some(tc) = &tshark_ctrl
                 {
@@ -320,6 +310,8 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                         }
                     }
                 }
+                // One-shot: if spawn fails the session stays dead (user must
+                // restart). Retrying risks double-spawn of airodump-ng.
                 if !session_spawn_attempted
                     && let Screen::Dashboard(dash) = &screen
                     && let Some(iface_name) = &dash.interface_name
@@ -331,8 +323,13 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                     );
                 }
             }
-            // Wake the loop to check detect_task completion while loading.
-            () = tokio::time::sleep(Duration::from_millis(100)), if detect_task.is_some() => {
+            // Periodic redraw: 100ms during loading (animation), 1s otherwise
+            // (elapsed-time counter).
+            () = tokio::time::sleep(if detect_task.is_some() {
+                Duration::from_millis(100)
+            } else {
+                Duration::from_secs(1)
+            }) => {
                 tick = tick.wrapping_add(1);
             }
         }
@@ -345,10 +342,43 @@ async fn resolve_detect_task(task: &mut Option<DetectGuard>) -> Option<Screen> {
         return None;
     }
     let handle = task.take().and_then(DetectGuard::into_handle)?;
+    // JoinError means the task panicked or was cancelled. Both are
+    // non-recoverable — fall back to an empty dashboard so the user
+    // can still quit cleanly.
     Some(handle.await.unwrap_or_else(|e| {
         tracing::error!("interface detection task failed: {e}");
         Screen::Dashboard(DashboardState::default())
     }))
+}
+
+/// Applies the first event plus up to 64 additional queued events to state,
+/// event log, and reveal file. Returns whether the hidden-AP set changed.
+fn drain_events(
+    rx: &mut mpsc::Receiver<AppEvent>,
+    first: &AppEvent,
+    state: &mut AppState,
+    reveal_log: &mut Option<std::fs::File>,
+) -> Result<bool> {
+    state.apply_event(first);
+    apply_event_to_log(state, first);
+    persist_reveal(reveal_log, state, first);
+    let mut changed = changes_hidden_set(first);
+    for _ in 0..64 {
+        match rx.try_recv() {
+            Ok(ev) => {
+                changed |= changes_hidden_set(&ev);
+                state.apply_event(&ev);
+                apply_event_to_log(state, &ev);
+                persist_reveal(reveal_log, state, &ev);
+            }
+            Err(mpsc::error::TryRecvError::Empty) => break,
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                tracing::error!("event channel closed unexpectedly");
+                anyhow::bail!("event channel closed");
+            }
+        }
+    }
+    Ok(changed)
 }
 
 fn initial_screen_and_task(
@@ -361,6 +391,74 @@ fn initial_screen_and_task(
         let handle = tokio::spawn(detect_initial_screen(cli_band));
         (Screen::Loading, Some(DetectGuard(Some(handle))))
     }
+}
+
+/// Loads a captured session for replay: one-shot CSV parse into state,
+/// then spawns tshark against the pcap for SSID reveals.
+///
+/// # Errors
+///
+/// Returns an error if the pcap path cannot be resolved, is not a regular
+/// file, or its metadata cannot be read.
+async fn load_replay(
+    pcap_path: &str,
+    tx: &mpsc::Sender<AppEvent>,
+    state: &mut AppState,
+    tshark_ctrl: &mut Option<TsharkController>,
+) -> Result<()> {
+    use veilbreak_core::airodump;
+
+    let pcap = Path::new(pcap_path)
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("cannot resolve pcap path {pcap_path}: {e}"))?;
+    let meta = std::fs::metadata(&pcap)
+        .map_err(|e| anyhow::anyhow!("cannot read pcap at {}: {e}", pcap.display()))?;
+    anyhow::ensure!(
+        meta.is_file(),
+        "replay path is not a regular file: {}",
+        pcap.display()
+    );
+    state.capture_size = meta.len();
+
+    let csv_path = pcap.with_extension("csv");
+    match std::fs::read_to_string(&csv_path) {
+        Ok(content) => {
+            let snapshot = airodump::parse_csv(&content);
+            let ap_count = snapshot.access_points.len();
+            let client_count = snapshot.clients.len();
+
+            for ap in &snapshot.access_points {
+                state.apply_event(&AppEvent::ApDiscovered(ap.clone()));
+            }
+            for client in &snapshot.clients {
+                state.apply_event(&AppEvent::ClientSeen(client.clone()));
+            }
+
+            state.log_event(format!(
+                "replay: loaded {ap_count} APs, {client_count} clients",
+            ));
+        }
+        Err(e) => {
+            state.log_event(format!(
+                "replay: no companion CSV at {}: {e}",
+                csv_path.display(),
+            ));
+        }
+    }
+
+    let tc = TsharkController::spawn(pcap, tx.clone());
+    let hidden: Vec<String> = state
+        .access_points
+        .iter()
+        .filter(|(_, ap)| ap.hidden)
+        .map(|(bssid, _)| bssid.clone())
+        .collect();
+    if !hidden.is_empty() {
+        tc.set_hidden_bssids(hidden).await;
+    }
+    *tshark_ctrl = Some(tc);
+
+    Ok(())
 }
 
 /// Aborts the interface detection task on drop so it never outlives the app.
@@ -547,7 +645,7 @@ fn persist_reveal(file: &mut Option<std::fs::File>, state: &AppState, event: &Ap
 const fn changes_hidden_set(event: &AppEvent) -> bool {
     matches!(
         event,
-        AppEvent::ApDiscovered(_) | AppEvent::SsidRevealed { .. }
+        AppEvent::ApDiscovered(_) | AppEvent::ApUpdated(_) | AppEvent::SsidRevealed { .. }
     )
 }
 
