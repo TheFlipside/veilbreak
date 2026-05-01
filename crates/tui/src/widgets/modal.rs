@@ -25,7 +25,13 @@ pub fn draw_setup(frame: &mut Frame, setup: &SetupScreen) {
             interface,
             dual_card,
             band,
+            ..
         } => draw_mode_confirm(frame, area, interface, *dual_card, *band),
+        SetupScreen::DeauthCardSelect {
+            deauth_options,
+            selected,
+            ..
+        } => draw_deauth_card_select(frame, area, deauth_options, *selected),
     }
 }
 
@@ -140,6 +146,50 @@ fn draw_mode_confirm(
 
     let content = Paragraph::new(text).block(block);
     frame.render_widget(content, modal);
+}
+
+fn draw_deauth_card_select(
+    frame: &mut Frame,
+    area: Rect,
+    options: &[Option<WirelessInterface>],
+    selected: usize,
+) {
+    let height = u16::try_from(options.len() + 4)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let modal = centered_rect(64, height, area);
+
+    frame.render_widget(Clear, modal);
+
+    let block = Block::default()
+        .title(" Select Deauth Card ")
+        .title_style(theme::title())
+        .borders(Borders::ALL)
+        .border_style(theme::border_focused());
+
+    let items: Vec<ListItem> = options
+        .iter()
+        .enumerate()
+        .map(|(i, opt)| {
+            let prefix = if i == selected { "\u{25b6} " } else { "  " };
+            let style = if i == selected {
+                theme::selected()
+            } else {
+                Style::default()
+            };
+            let label = opt.as_ref().map_or_else(
+                || "Same as scan card (channel-hop risk)".to_owned(),
+                |iface| {
+                    let mon = if iface.monitor_capable { " [mon]" } else { "" };
+                    format!("{} ({}) {}{mon}", iface.name, iface.phy, iface.addr)
+                },
+            );
+            ListItem::new(format!("{prefix}{label}")).style(style)
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, modal);
 }
 
 /// Draws the deauth target selection modal as a centered overlay.

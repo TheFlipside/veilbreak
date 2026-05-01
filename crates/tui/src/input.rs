@@ -51,6 +51,7 @@ pub fn handle_key(screen: &mut Screen, state: &AppState, key: KeyCode) -> Outcom
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per setup step; splitting would obscure the state machine
 fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
     match setup {
         SetupScreen::InterfaceSelect {
@@ -74,17 +75,20 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
                     return SetupOutcome::Continue;
                 };
                 let dual = interfaces.iter().filter(|i| i.monitor_capable).count() > 1;
+                let all = interfaces.clone();
                 if let Some(band) = *cli_band {
                     SetupOutcome::Transition(Screen::Setup(SetupScreen::ModeConfirm {
                         interface: iface,
                         dual_card: dual,
                         band,
+                        all_interfaces: all,
                     }))
                 } else {
                     SetupOutcome::Transition(Screen::Setup(SetupScreen::BandSelect {
                         interface: iface,
                         dual_card: dual,
                         selected: Band::default(),
+                        all_interfaces: all,
                     }))
                 }
             }
@@ -94,6 +98,7 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
             interface,
             dual_card,
             selected,
+            all_interfaces,
         } => match key {
             KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
             KeyCode::Up | KeyCode::Char('k') => {
@@ -108,21 +113,72 @@ fn handle_setup_key(setup: &mut SetupScreen, key: KeyCode) -> SetupOutcome {
                 interface: interface.clone(),
                 dual_card: *dual_card,
                 band: *selected,
+                all_interfaces: all_interfaces.clone(),
             })),
             _ => SetupOutcome::Continue,
         },
         SetupScreen::ModeConfirm {
-            interface, band, ..
+            interface,
+            band,
+            dual_card,
+            all_interfaces,
         } => match key {
             KeyCode::Enter => {
+                if *dual_card {
+                    let mut deauth_options: Vec<Option<_>> = vec![None];
+                    for iface in all_interfaces {
+                        if iface.name != interface.name && iface.monitor_capable {
+                            deauth_options.push(Some(iface.clone()));
+                        }
+                    }
+                    SetupOutcome::Transition(Screen::Setup(SetupScreen::DeauthCardSelect {
+                        interface: interface.clone(),
+                        band: *band,
+                        deauth_options,
+                        selected: 0,
+                    }))
+                } else {
+                    let dash = DashboardState {
+                        interface_name: Some(interface.name.clone()),
+                        band: *band,
+                        ..DashboardState::default()
+                    };
+                    SetupOutcome::Transition(Screen::Dashboard(dash))
+                }
+            }
+            KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
+            _ => SetupOutcome::Continue,
+        },
+        SetupScreen::DeauthCardSelect {
+            interface,
+            band,
+            deauth_options,
+            selected,
+        } => match key {
+            KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
+            KeyCode::Up | KeyCode::Char('k') => {
+                *selected = selected.saturating_sub(1);
+                SetupOutcome::Continue
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if *selected + 1 < deauth_options.len() {
+                    *selected += 1;
+                }
+                SetupOutcome::Continue
+            }
+            KeyCode::Enter => {
+                let deauth_iface = deauth_options
+                    .get(*selected)
+                    .and_then(|opt| opt.as_ref())
+                    .map(|iface| iface.name.clone());
                 let dash = DashboardState {
                     interface_name: Some(interface.name.clone()),
                     band: *band,
+                    deauth_interface: deauth_iface,
                     ..DashboardState::default()
                 };
                 SetupOutcome::Transition(Screen::Dashboard(dash))
             }
-            KeyCode::Char('q') | KeyCode::Esc => SetupOutcome::Quit,
             _ => SetupOutcome::Continue,
         },
     }

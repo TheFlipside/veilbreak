@@ -128,6 +128,7 @@ pub fn is_root() -> bool {
 async fn run_iw(args: &[&str]) -> Result<String, InterfaceError> {
     let output = Command::new("iw")
         .args(args)
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .map_err(InterfaceError::IwExecution)?;

@@ -27,6 +27,10 @@ pub enum Error {
     /// An error from the persistence module.
     #[error(transparent)]
     Persist(#[from] PersistError),
+
+    /// An error from the monitor module.
+    #[error(transparent)]
+    Monitor(#[from] MonitorError),
 }
 
 /// Errors from wireless interface detection and management.
@@ -121,6 +125,50 @@ pub enum AireplayError {
         /// Captured stderr from `iw` (truncated, sanitized).
         stderr: String,
     },
+}
+
+/// Errors from monitor mode management.
+#[derive(Debug, Error)]
+pub enum MonitorError {
+    /// Failed to bring the interface down.
+    #[error("failed to bring {interface} down: {stderr}")]
+    LinkDown {
+        /// Interface name.
+        interface: String,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// Failed to set monitor mode.
+    #[error("failed to set monitor mode on {interface}: {stderr}")]
+    SetMonitor {
+        /// Interface name.
+        interface: String,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// Failed to restore managed mode during rollback.
+    #[error("failed to restore managed mode on {interface}: {stderr}")]
+    SetManaged {
+        /// Interface name.
+        interface: String,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// Failed to bring the interface up.
+    #[error("failed to bring {interface} up: {stderr}")]
+    LinkUp {
+        /// Interface name.
+        interface: String,
+        /// Captured stderr (truncated, sanitized).
+        stderr: String,
+    },
+
+    /// An argument failed validation.
+    #[error("invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 /// Errors from persistence operations.

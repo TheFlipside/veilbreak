@@ -51,6 +51,8 @@ pub enum SetupScreen {
         dual_card: bool,
         /// Currently highlighted band.
         selected: Band,
+        /// All detected interfaces, carried forward for the deauth card step.
+        all_interfaces: Vec<WirelessInterface>,
     },
     /// Confirm the monitoring mode before proceeding.
     ModeConfirm {
@@ -60,6 +62,20 @@ pub enum SetupScreen {
         dual_card: bool,
         /// The selected Wi-Fi band.
         band: Band,
+        /// All detected interfaces, carried forward for the deauth card step.
+        all_interfaces: Vec<WirelessInterface>,
+    },
+    /// User picks which card to use for deauth.
+    DeauthCardSelect {
+        /// The chosen scan interface.
+        interface: WirelessInterface,
+        /// The selected Wi-Fi band.
+        band: Band,
+        /// Monitor-capable interfaces available for deauth.
+        /// `None` entries represent "same as scan card".
+        deauth_options: Vec<Option<WirelessInterface>>,
+        /// Currently highlighted index.
+        selected: usize,
     },
 }
 
@@ -72,6 +88,8 @@ pub struct DashboardState {
     pub sort: SortColumn,
     /// Name of the monitoring interface, if active.
     pub interface_name: Option<String>,
+    /// Name of the dedicated deauth interface, if separate from the scan card.
+    pub deauth_interface: Option<String>,
     /// Scroll offset in the event log.
     pub event_scroll: usize,
     /// Wi-Fi band passed to airodump-ng.
@@ -226,6 +244,7 @@ impl FocusPane {
 /// # Errors
 ///
 /// Returns an error if terminal I/O fails or an unrecoverable error occurs.
+#[allow(clippy::too_many_lines)]
 pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     replay: Option<String>,
@@ -240,6 +259,8 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     let mut tshark_ctrl: Option<TsharkController> = None;
     let mut session_spawn_attempted = false;
     let mut deauth_guard = DeauthGuard::default();
+    #[allow(clippy::collection_is_never_read)] // held for Drop side-effect (restores managed mode)
+    let mut _monitor_guard: Option<veilbreak_core::monitor::MonitorGuard> = None;
     let mut reveal_log = open_reveal_log(output_dir);
 
     let (mut screen, mut detect_task) = initial_screen_and_task(replay.as_deref(), band);
@@ -248,7 +269,8 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
     if let Some(ref pcap_path) = replay {
         session_spawn_attempted = true;
         if let Err(e) = load_replay(pcap_path, &tx, &mut state, &mut tshark_ctrl).await {
-            state.log_event(format!("replay failed: {e}"));
+            let safe = veilbreak_core::validate::sanitize_display_string(&e.to_string());
+            state.log_event(format!("replay failed: {safe}"));
             tracing::error!("replay load failed: {e:#}");
         }
     }
@@ -294,11 +316,13 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                             input::Outcome::Quit => return Ok(()),
                             input::Outcome::Deauth(target) => {
                                 if let Screen::Dashboard(dash) = &screen
-                                    && let Some(iface) = dash.interface_name.clone()
+                                    && let Some(scan_iface) = dash.interface_name.clone()
                                 {
+                                    let deauth_iface =
+                                        dash.deauth_interface.clone().unwrap_or(scan_iface);
                                     dispatch_deauth(
                                         target,
-                                        iface,
+                                        deauth_iface,
                                         &tx,
                                         &mut state,
                                         &mut deauth_guard,
@@ -316,12 +340,36 @@ pub async fn run<B: Backend<Error: Send + Sync + 'static>>(
                 // One-shot: if spawn fails the session stays dead (user must
                 // restart). Retrying risks double-spawn of airodump-ng.
                 if !session_spawn_attempted
-                    && let Screen::Dashboard(dash) = &screen
-                    && let Some(iface_name) = &dash.interface_name
+                    && let Screen::Dashboard(ref mut dash) = screen
+                    && let Some(iface_name) = dash.interface_name.clone()
                 {
                     session_spawn_attempted = true;
+
+                    if let Some(deauth_iface) = &dash.deauth_interface {
+                        match veilbreak_core::monitor::MonitorGuard::enter(deauth_iface).await {
+                            Ok(guard) => {
+                                state.log_event(format!(
+                                    "deauth card {deauth_iface} in monitor mode",
+                                ));
+                                _monitor_guard = Some(guard);
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "failed to set monitor mode on {deauth_iface}: {e}",
+                                );
+                                let safe = veilbreak_core::validate::sanitize_display_string(
+                                    &e.to_string(),
+                                );
+                                state.log_event(format!(
+                                    "deauth card failed, using scan card: {safe}",
+                                ));
+                                dash.deauth_interface = None;
+                            }
+                        }
+                    }
+
                     try_spawn_session(
-                        iface_name, dash.band, output_dir, tx.clone(),
+                        &iface_name, dash.band, output_dir, tx.clone(),
                         &mut state, &mut airodump_ctrl, &mut tshark_ctrl,
                     );
                 }
@@ -446,9 +494,11 @@ async fn load_replay(
             ));
         }
         Err(e) => {
+            let safe_path =
+                veilbreak_core::validate::sanitize_display_string(&csv_path.display().to_string());
+            let safe_err = veilbreak_core::validate::sanitize_display_string(&e.to_string());
             state.log_event(format!(
-                "replay: no companion CSV at {}: {e}",
-                csv_path.display(),
+                "replay: no companion CSV at {safe_path}: {safe_err}",
             ));
         }
     }
@@ -530,7 +580,8 @@ fn try_spawn_session(
         }
         Err(e) => {
             tracing::error!("failed to start capture session: {e}");
-            state.log_event(format!("error: {e}"));
+            let safe = veilbreak_core::validate::sanitize_display_string(&e.to_string());
+            state.log_event(format!("error: {safe}"));
         }
     }
 }

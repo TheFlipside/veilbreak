@@ -9,6 +9,7 @@ pub mod airodump;
 pub mod error;
 pub mod event;
 pub mod interface;
+pub mod monitor;
 pub mod persist;
 pub mod state;
 pub mod tshark;

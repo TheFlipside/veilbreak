@@ -548,6 +548,7 @@ async fn channel_watch_loop(interface: String, tx: mpsc::Sender<AppEvent>) {
             .arg("dev")
             .arg(&interface)
             .arg("info")
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output()

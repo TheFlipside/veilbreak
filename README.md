@@ -26,6 +26,11 @@ jurisdictions. The authors assume no liability for misuse.
 - **Deauthentication injection** — sends broadcast or targeted deauth frames via
   `aireplay-ng` to force clients to reassociate, triggering SSID disclosure.
   Concurrent deauths are bounded and all subprocess handles are tracked.
+- **Dedicated deauth card** — optionally uses a second wireless adapter
+  exclusively for deauth. The scan card can channel-hop freely while the deauth
+  card holds the target AP's channel, dramatically improving reliability on
+  5 GHz where channel-hopping often causes missed frames. Monitor mode is
+  managed automatically (entered on startup, restored on exit via RAII guard).
 - **Filtering** — filter the AP list by hidden-only status and frequency band
   (All / 2.4 GHz / 5 GHz).
 - **Session output** — captures, logs, and revealed-SSID records are written to a
@@ -44,8 +49,16 @@ installed:
 | `iproute2`        | `ip` — interface state management           |
 | `wireless-tools`  | Legacy wireless utilities                   |
 
-A wireless adapter that supports **monitor mode** is required. Dual-card setups
-(one card for monitoring, one for connectivity) are supported and recommended.
+A wireless adapter that supports **monitor mode** is required. Multiple cards
+are supported and recommended:
+
+- **Single card** — works, but host connectivity is lost during the session and
+  deauth reliability suffers from channel-hopping.
+- **Two cards** — one for scanning, one for either host connectivity or
+  dedicated deauth. The setup wizard lets you choose.
+- **Three cards** — scan + dedicated deauth + host connectivity. Ideal setup
+  for 5 GHz environments where channel-hop timing makes single-card deauth
+  unreliable.
 
 ### Debian / Ubuntu
 
@@ -111,6 +124,33 @@ To replay a previously captured pcap file (no root required, no live capture):
 ```bash
 ./target/release/veilbreak-tui --replay path/to/capture.pcap
 ```
+
+## Setup Flow
+
+On launch, Veilbreak walks through a setup wizard before starting the
+dashboard:
+
+1. **Interface select** — pick the wireless adapter for scanning. All detected
+   interfaces are listed with their PHY, MAC address, and a `[mon]` tag if
+   monitor mode is supported.
+2. **Band select** — choose `2.4 GHz`, `5 GHz`, or `Both`. Skipped if
+   `--band` was passed on the command line.
+3. **Mode confirm** — review the selected interface and band. Single-card mode
+   warns that host connectivity will be lost; dual-card mode notes it is
+   preserved.
+4. **Deauth card select** *(only shown when multiple monitor-capable cards
+   exist)* — pick a dedicated card for sending deauth frames, or choose
+   "Same as scan card" to use the scan adapter for both (current default
+   behavior, with a channel-hop risk warning).
+
+If a dedicated deauth card is selected, Veilbreak automatically puts it into
+monitor mode (`ip link set down` → `iw set type monitor` → `ip link set up`).
+On exit — including crashes and panics — the card is restored to managed mode
+via a blocking RAII guard.
+
+If monitor mode setup fails (e.g. the driver doesn't support injection), the
+deauth card selection is cleared and the scan card is used as a fallback. A
+warning is logged to the event pane.
 
 ## CLI Flags
 

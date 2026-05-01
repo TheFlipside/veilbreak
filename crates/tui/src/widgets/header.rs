@@ -13,10 +13,21 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
     let mins = elapsed / 60;
     let secs = elapsed % 60;
 
-    if let Some(name) = &dash.interface_name {
-        debug_assert!(veilbreak_core::validate::is_valid_interface_name(name));
-    }
-    let iface = dash.interface_name.as_deref().unwrap_or("\u{2014}");
+    let scan_iface = dash.interface_name.as_deref().map_or_else(
+        || "\u{2014}".to_owned(),
+        |n| {
+            let truncated = veilbreak_core::validate::truncate_utf8(n, 15);
+            veilbreak_core::validate::sanitize_display_string(truncated)
+        },
+    );
+    let iface_display = dash.deauth_interface.as_deref().map_or_else(
+        || scan_iface.clone(),
+        |deauth| {
+            let truncated = veilbreak_core::validate::truncate_utf8(deauth, 15);
+            let safe = veilbreak_core::validate::sanitize_display_string(truncated);
+            format!("{scan_iface} + {safe}")
+        },
+    );
     let ch = state
         .current_channel
         .map_or_else(|| "\u{2014}".to_owned(), |c| c.to_string());
@@ -26,7 +37,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
 
     let band_label = dash.band.label();
     let text = format!(
-        " iface: {iface}  band: {band_label}  ch: {ch}  capture: {cap_size}  APs: {ap_count}  elapsed: {mins:02}:{secs:02}",
+        " iface: {iface_display}  band: {band_label}  ch: {ch}  capture: {cap_size}  APs: {ap_count}  elapsed: {mins:02}:{secs:02}",
     );
 
     let header = Paragraph::new(text)
