@@ -6,11 +6,28 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `is_p2p_bssid()` validator in `core::validate`: detects Wi-Fi Alliance OUI (`50:6F:9A`) BSSIDs used by Wi-Fi Direct / P2P group owners; gates on `is_valid_bssid()` for safety
+- `wifi_direct` theme style (default: yellow) for P2P BSSID highlighting in all three preset themes (`default.toml`, `solarized-dark.toml`, `high-contrast.toml`)
+- "Hide Wi-Fi Direct" filter in the filter modal (`f` key): hides BSSIDs using the Wi-Fi Alliance OUI (`50:6F:9A`), commonly seen from Wi-Fi Direct / P2P group owners
+- P2P BSSID visual highlighting in the AP list table — Wi-Fi Alliance OUI BSSIDs rendered in the `wifi_direct` theme color
+- `ADAPTERS.md` — wireless adapter compatibility guide with tested adapters (Verified / Community status), monitor-mode-only adapters, known incompatible chipsets, detailed chipset notes, and links to community resources (morrownr/USB-WiFi, airgeddon wiki, aircrack-ng, Kali docs)
+- "Adapter Compatibility" section in README with `aireplay-ng --test` instructions and link to `ADAPTERS.md`
+- "Interface Naming" section in README explaining systemd's predictable naming (`wlx...`) and how to revert to `wlan0`-style names via `net.ifnames=0`
+- 5 unit tests for `is_p2p_bssid()` covering valid P2P BSSIDs, non-P2P BSSIDs, and malformed input
+- 4 unit tests for `FilterState::matches()` covering `hide_p2p`, `hidden_only`, and band filters
+
 ### Fixed
 
 ### Security
 
+- **Setup modal display sanitization hardened**: `WirelessInterface` fields (`name`, `phy`, `addr`) in `draw_interface_select`, `draw_mode_confirm`, and `draw_deauth_card_select` now passed through `sanitize_display_string()` at the rendering boundary — defense-in-depth independent of upstream parser validation
+
 ### Changed
+
+- `FilterState::matches()` changed from `const fn` to `fn` (now calls `is_p2p_bssid` which is not const)
+- `FILTER_ROW_COUNT` increased from 2 to 3 to accommodate the new "Hide Wi-Fi Direct" row
+- Filter modal row 2 uses explicit `2 =>` match arm instead of wildcard `_` to prevent silent absorption of future rows
+- Filter modal height increased from 8 to 9 lines to fit the third filter row
 
 ## 0.9.0 - 2026-05-01
 

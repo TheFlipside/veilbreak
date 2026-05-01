@@ -84,6 +84,11 @@ pub fn revealed() -> Style {
     get().revealed
 }
 
+/// Wi-Fi Direct / P2P BSSID (OUI `50:6F:9A`).
+pub fn wifi_direct() -> Style {
+    get().wifi_direct
+}
+
 /// Dimmed placeholder text.
 pub fn dim() -> Style {
     get().dim
@@ -105,6 +110,7 @@ pub struct Theme {
     keybind_key: Style,
     keybind_desc: Style,
     revealed: Style,
+    wifi_direct: Style,
     dim: Style,
 }
 
@@ -120,6 +126,7 @@ impl Default for Theme {
             keybind_key: Style::new().fg(Color::Cyan),
             keybind_desc: Style::new().fg(Color::DarkGray),
             revealed: Style::new().fg(Color::Green),
+            wifi_direct: Style::new().fg(Color::Yellow),
             dim: Style::new().fg(Color::DarkGray),
         }
     }
@@ -143,6 +150,7 @@ struct ThemeFile {
     keybind_key: Option<StyleDef>,
     keybind_desc: Option<StyleDef>,
     revealed: Option<StyleDef>,
+    wifi_direct: Option<StyleDef>,
     dim: Option<StyleDef>,
 }
 
@@ -295,6 +303,7 @@ fn resolve_theme(file: &ThemeFile) -> anyhow::Result<Theme> {
         keybind_key: resolve_style(file.keybind_key.as_ref(), d.keybind_key)?,
         keybind_desc: resolve_style(file.keybind_desc.as_ref(), d.keybind_desc)?,
         revealed: resolve_style(file.revealed.as_ref(), d.revealed)?,
+        wifi_direct: resolve_style(file.wifi_direct.as_ref(), d.wifi_direct)?,
         dim: resolve_style(file.dim.as_ref(), d.dim)?,
     })
 }

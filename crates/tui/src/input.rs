@@ -228,7 +228,7 @@ fn handle_deauth_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
     }
 }
 
-const FILTER_ROW_COUNT: usize = 2;
+const FILTER_ROW_COUNT: usize = 3;
 const PAGE_SIZE: usize = 5;
 
 fn handle_filter_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
@@ -253,7 +253,9 @@ fn handle_filter_modal_key(dash: &mut DashboardState, key: KeyCode) -> Outcome {
             let row = *selected;
             match row {
                 0 => dash.filter.hidden_only = !dash.filter.hidden_only,
-                _ => dash.filter.band = dash.filter.band.next(),
+                1 => dash.filter.band = dash.filter.band.next(),
+                2 => dash.filter.hide_p2p = !dash.filter.hide_p2p,
+                _ => {}
             }
             Outcome::Continue
         }

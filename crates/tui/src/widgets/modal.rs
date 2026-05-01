@@ -73,7 +73,9 @@ fn draw_interface_select(
             };
             ListItem::new(format!(
                 "{prefix}{} ({}) {}{monitor_tag}",
-                iface.name, iface.phy, iface.addr,
+                sanitize_display_string(&iface.name),
+                sanitize_display_string(&iface.phy),
+                sanitize_display_string(&iface.addr),
             ))
             .style(style)
         })
@@ -141,7 +143,7 @@ fn draw_mode_confirm(
     let band_label = band.label();
     let text = format!(
         "\n  Interface: {}\n  Band: {band_label}\n  {mode_text}\n\n  Press Enter to continue, Esc to cancel.",
-        interface.name,
+        sanitize_display_string(&interface.name),
     );
 
     let content = Paragraph::new(text).block(block);
@@ -181,7 +183,12 @@ fn draw_deauth_card_select(
                 || "Same as scan card (channel-hop risk)".to_owned(),
                 |iface| {
                     let mon = if iface.monitor_capable { " [mon]" } else { "" };
-                    format!("{} ({}) {}{mon}", iface.name, iface.phy, iface.addr)
+                    format!(
+                        "{} ({}) {}{mon}",
+                        sanitize_display_string(&iface.name),
+                        sanitize_display_string(&iface.phy),
+                        sanitize_display_string(&iface.addr),
+                    )
                 },
             );
             ListItem::new(format!("{prefix}{label}")).style(style)
@@ -320,7 +327,8 @@ pub fn draw_help_modal(frame: &mut Frame) {
 /// Draws the AP list filter modal.
 pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterState) {
     let area = frame.area();
-    let modal_area = centered_rect(44, 8, area);
+    // 2 border lines + 3 filter rows + 1 blank + 1 keybind footer = 9
+    let modal_area = centered_rect(44, 9, area);
 
     frame.render_widget(Clear, modal_area);
 
@@ -330,25 +338,25 @@ pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterStat
         .borders(Borders::ALL)
         .border_style(theme::border_focused());
 
-    let hidden_prefix = if selected == 0 { "\u{25b6} " } else { "  " };
-    let band_prefix = if selected == 1 { "\u{25b6} " } else { "  " };
-    let hidden_style = if selected == 0 {
-        theme::selected()
-    } else {
-        Style::default()
-    };
-    let band_style = if selected == 1 {
-        theme::selected()
-    } else {
-        Style::default()
+    let row_prefix = |idx: usize| if selected == idx { "\u{25b6} " } else { "  " };
+    let row_style = |idx: usize| {
+        if selected == idx {
+            theme::selected()
+        } else {
+            Style::default()
+        }
     };
 
     let hidden_value = if filter.hidden_only { "ON" } else { "OFF" };
+    let p2p_value = if filter.hide_p2p { "ON" } else { "OFF" };
 
     let items = vec![
-        ListItem::new(format!("{hidden_prefix}Hidden/revealed:  {hidden_value}"))
-            .style(hidden_style),
-        ListItem::new(format!("{band_prefix}Band:  {}", filter.band.label())).style(band_style),
+        ListItem::new(format!("{}Hidden/revealed:  {hidden_value}", row_prefix(0)))
+            .style(row_style(0)),
+        ListItem::new(format!("{}Band:  {}", row_prefix(1), filter.band.label()))
+            .style(row_style(1)),
+        ListItem::new(format!("{}Hide Wi-Fi Direct:  {p2p_value}", row_prefix(2)))
+            .style(row_style(2)),
         ListItem::new(""),
         ListItem::new(Line::from(vec![
             Span::raw("  ["),

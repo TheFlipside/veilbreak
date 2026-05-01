@@ -39,6 +39,15 @@ pub const fn is_valid_channel(ch: u32) -> bool {
     ch >= 1 && ch <= 196
 }
 
+/// Returns `true` if the BSSID belongs to the Wi-Fi Alliance OUI (`50:6F:9A`),
+/// used by Wi-Fi Direct / P2P group owners.
+///
+/// Only returns `true` for well-formed BSSIDs (validated by [`is_valid_bssid`]).
+#[must_use]
+pub fn is_p2p_bssid(bssid: &str) -> bool {
+    is_valid_bssid(bssid) && bssid[..8].eq_ignore_ascii_case("50:6F:9A")
+}
+
 /// Maximum length in bytes for an ESSID (IEEE 802.11 limit).
 pub const MAX_ESSID_LEN: usize = 32;
 
@@ -185,6 +194,19 @@ mod tests {
         let s = "aé";
         let result = truncate_utf8(s, 2);
         assert_eq!(result, "a");
+    }
+
+    #[test]
+    fn p2p_bssids() {
+        assert!(is_p2p_bssid("50:6F:9A:01:00:00"));
+        assert!(is_p2p_bssid("50:6f:9a:FF:EE:DD"));
+        assert!(is_p2p_bssid("50:6F:9A:00:00:00"));
+        assert!(!is_p2p_bssid("AA:BB:CC:DD:EE:FF"));
+        assert!(!is_p2p_bssid("50:6F:9B:01:00:00"));
+        assert!(!is_p2p_bssid(""));
+        assert!(!is_p2p_bssid("50:6F"));
+        assert!(!is_p2p_bssid("50:6F:9A"));
+        assert!(!is_p2p_bssid("50:6F:9A:01:00:00:extra"));
     }
 
     #[test]

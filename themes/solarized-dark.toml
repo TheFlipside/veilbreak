@@ -32,5 +32,8 @@ fg = "#586e75"          # base01
 [revealed]
 fg = "#859900"          # green
 
+[wifi_direct]
+fg = "#b58900"          # yellow
+
 [dim]
 fg = "#586e75"          # base01

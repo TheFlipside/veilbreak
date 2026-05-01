@@ -3,6 +3,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table};
 use veilbreak_core::state::AccessPoint;
+use veilbreak_core::validate;
 
 use crate::app::{DashboardState, FocusPane};
 use crate::theme;
@@ -48,8 +49,14 @@ pub fn draw(
                 (Some(s), false) => (s, Style::default()),
                 (None, _) => (if ap.hidden { "<hid>" } else { "" }, Style::default()),
             };
+            // ap.bssid is validated at CSV ingestion in airodump::parse_ap_line
+            let bssid_style = if validate::is_p2p_bssid(&ap.bssid) {
+                theme::wifi_direct()
+            } else {
+                Style::default()
+            };
             Row::new(vec![
-                Cell::from(ap.bssid.clone()),
+                Cell::from(ap.bssid.clone()).style(bssid_style),
                 ap.channel
                     .map_or_else(|| Cell::from("\u{2014}"), |ch| Cell::from(ch.to_string())),
                 Cell::from(ap.power.to_string()),

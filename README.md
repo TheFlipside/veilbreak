@@ -78,6 +78,37 @@ sudo pacman -S aircrack-ng wireshark-cli iw iproute2 wireless_tools
 sudo dnf install aircrack-ng wireshark-cli iw iproute wireless-tools
 ```
 
+### Interface Naming
+
+Modern Linux systems use systemd's **predictable interface naming**, which
+renames wireless adapters from `wlan0` to MAC-based names like
+`wlx00c0cab5ce7e`. This is especially common with USB adapters that lack a
+fixed bus location. The names are stable across reboots but harder to read
+in the Veilbreak interface list.
+
+To revert to traditional `wlan0`-style naming, add `net.ifnames=0` to your
+kernel command line:
+
+```bash
+# GRUB (Debian/Ubuntu/Fedora)
+sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 net.ifnames=0"/' /etc/default/grub
+sudo update-grub   # Debian/Ubuntu
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg   # Fedora
+```
+
+```bash
+# systemd-boot (Arch Linux)
+# Edit your loader entry in /boot/loader/entries/*.conf
+# Append net.ifnames=0 to the options line
+```
+
+A reboot is required for the change to take effect. After rebooting, `ip
+link` should show `wlan0`, `wlan1`, etc.
+
+> **Note:** This is a system-wide change. If you have firewall rules, udev
+> rules, or network configurations that reference the predictable names,
+> update them accordingly.
+
 ## Building
 
 Veilbreak is written in Rust. You need a working Rust toolchain (1.85+ for
@@ -200,6 +231,9 @@ Available filters:
 
 - **Hidden only** — show only APs with concealed SSIDs
 - **Band** — cycle through All, 2.4 GHz (channels 1-14), 5 GHz (channels 36+)
+- **Hide Wi-Fi Direct** — hide BSSIDs using the Wi-Fi Alliance OUI
+  (`50:6F:9A`), commonly seen from Wi-Fi Direct / P2P group owners.
+  These are typically not useful deauth targets.
 
 > **Note — cross-band ghost APs:** When scanning a single band you may
 > occasionally see APs from the other band appear in the list, sometimes
@@ -276,10 +310,13 @@ bg = "dark_gray"
 
 [revealed]
 fg = "green"
+
+[wifi_direct]
+fg = "yellow"
 ```
 
 **Styles:** `border`, `border_focused`, `border_danger`, `header`, `title`,
-`selected`, `keybind_key`, `keybind_desc`, `revealed`, `dim`.
+`selected`, `keybind_key`, `keybind_desc`, `revealed`, `wifi_direct`, `dim`.
 
 **Colors:** Any ratatui named color (case-insensitive, underscores optional) or
 `#RRGGBB` hex. Named colors: `black`, `red`, `green`, `yellow`, `blue`,
@@ -292,6 +329,21 @@ others are not). Set `bold = false` to explicitly remove a default modifier.
 
 Unknown keys are rejected to catch typos — loading will error on unrecognised
 style names or style fields.
+
+## Adapter Compatibility
+
+Not all wireless adapters that support **monitor mode** also support **frame
+injection** (deauth). Before relying on a card for deauth, test it:
+
+```bash
+sudo aireplay-ng --test wlan0mon
+```
+
+If it reports `Injection is working!`, the card supports deauth. If it fails,
+the card can still be used for scanning/capture but not for deauth injection.
+
+See [ADAPTERS.md](ADAPTERS.md) for a table of tested adapters with their
+chipsets and capability status.
 
 ## License
 

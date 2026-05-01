@@ -142,7 +142,7 @@ pub enum Modal {
     Deauth(DeauthModal),
     /// AP list filter toggles.
     Filter {
-        /// Selected row: 0 = hidden-only, 1 = band.
+        /// Selected row: 0 = hidden-only, 1 = band, 2 = hide Wi-Fi Direct.
         selected: usize,
     },
     /// Full keybind reference overlay.
@@ -156,13 +156,18 @@ pub struct FilterState {
     pub hidden_only: bool,
     /// Band filter.
     pub band: BandFilter,
+    /// Hide Wi-Fi Direct / P2P devices (OUI `50:6F:9A`).
+    pub hide_p2p: bool,
 }
 
 impl FilterState {
     /// Returns `true` if the access point passes all active filters.
     #[must_use]
-    pub const fn matches(&self, ap: &veilbreak_core::state::AccessPoint) -> bool {
+    pub fn matches(&self, ap: &veilbreak_core::state::AccessPoint) -> bool {
         if self.hidden_only && !ap.hidden && !ap.revealed {
+            return false;
+        }
+        if self.hide_p2p && veilbreak_core::validate::is_p2p_bssid(&ap.bssid) {
             return false;
         }
         match self.band {
@@ -763,4 +768,84 @@ fn apply_event_to_log(state: &mut AppState, event: &AppEvent) {
         }
     };
     state.log_event(msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use veilbreak_core::state::AccessPoint;
+
+    fn make_ap(bssid: &str, channel: Option<u32>, hidden: bool) -> AccessPoint {
+        AccessPoint {
+            bssid: bssid.to_owned(),
+            ssid: if hidden {
+                None
+            } else {
+                Some("TestNet".to_owned())
+            },
+            channel,
+            power: -42,
+            encryption: "WPA2".to_owned(),
+            clients: HashMap::new(),
+            beacon_count: 10,
+            hidden,
+            revealed: false,
+        }
+    }
+
+    #[test]
+    fn filter_hide_p2p() {
+        let filter = FilterState {
+            hide_p2p: true,
+            ..FilterState::default()
+        };
+        let p2p_ap = make_ap("50:6F:9A:01:00:00", Some(6), false);
+        let normal_ap = make_ap("AA:BB:CC:DD:EE:FF", Some(6), false);
+
+        assert!(!filter.matches(&p2p_ap));
+        assert!(filter.matches(&normal_ap));
+    }
+
+    #[test]
+    fn filter_hide_p2p_off_shows_all() {
+        let filter = FilterState::default();
+        let p2p_ap = make_ap("50:6F:9A:01:00:00", Some(6), false);
+        let normal_ap = make_ap("AA:BB:CC:DD:EE:FF", Some(6), false);
+
+        assert!(filter.matches(&p2p_ap));
+        assert!(filter.matches(&normal_ap));
+    }
+
+    #[test]
+    fn filter_hidden_only() {
+        let filter = FilterState {
+            hidden_only: true,
+            ..FilterState::default()
+        };
+        let hidden_ap = make_ap("AA:BB:CC:DD:EE:FF", Some(6), true);
+        let visible_ap = make_ap("11:22:33:44:55:66", Some(6), false);
+
+        assert!(filter.matches(&hidden_ap));
+        assert!(!filter.matches(&visible_ap));
+    }
+
+    #[test]
+    fn filter_band() {
+        let filter_24 = FilterState {
+            band: BandFilter::TwoFour,
+            ..FilterState::default()
+        };
+        let filter_5 = FilterState {
+            band: BandFilter::Five,
+            ..FilterState::default()
+        };
+        let ap_24 = make_ap("AA:BB:CC:DD:EE:FF", Some(6), false);
+        let ap_5 = make_ap("11:22:33:44:55:66", Some(36), false);
+
+        assert!(filter_24.matches(&ap_24));
+        assert!(!filter_24.matches(&ap_5));
+        assert!(!filter_5.matches(&ap_24));
+        assert!(filter_5.matches(&ap_5));
+    }
 }

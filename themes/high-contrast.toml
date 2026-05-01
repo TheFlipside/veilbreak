@@ -35,5 +35,9 @@ fg = "white"
 fg = "light_green"
 bold = true
 
+[wifi_direct]
+fg = "light_yellow"
+bold = true
+
 [dim]
 fg = "gray"

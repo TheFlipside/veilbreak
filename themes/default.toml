@@ -45,5 +45,8 @@ fg = "dark_gray"
 [revealed]
 fg = "green"
 
+[wifi_direct]
+fg = "yellow"
+
 [dim]
 fg = "dark_gray"
