@@ -2,6 +2,8 @@
 
 All notable changes to this project are documented in this file.
 
+<!-- markdownlint-disable MD024 -->
+
 ## Unreleased
 
 ### Added
