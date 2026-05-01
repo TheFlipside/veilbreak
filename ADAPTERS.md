@@ -39,9 +39,10 @@ Status is one of:
 
 ### Monitor Mode Only (No Injection)
 
-| Adapter          | Chipset         | USB ID      | Driver    | Band             | Status   |
-| ---------------- | --------------- | ----------- | --------- | ---------------- | -------- |
-| Alfa AWUS036AXML | MediaTek MT7961 | `0e8d:7961` | `mt7921u` | 2.4 + 5 + 6 GHz  | Verified |
+| Adapter             | Chipset         | USB/PCI ID  | Driver    | Band             | Status   |
+| ------------------- | --------------- | ----------- | --------- | ---------------- | -------- |
+| Alfa AWUS036AXML    | MediaTek MT7961 | `0e8d:7961` | `mt7921u` | 2.4 + 5 + 6 GHz  | Verified |
+| Intel Wi-Fi 6 AX200 | Intel AX200NGW  | `8086:2723` | `iwlwifi` | 2.4 + 5 GHz      | Verified |
 
 > **Note on MT7961 / MT7921:** Some community sources report injection
 > working on the USB variant (MT7921AU) with kernels 6.6+. Our testing on
