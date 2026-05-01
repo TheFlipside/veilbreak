@@ -50,33 +50,27 @@ jobs:
         run: cargo deb -p veilbreak-tui --no-build --output dist/
 
       - name: Create Forgejo release
-        uses: https://code.forgejo.org/actions/forgejo-release@v2.6.0
-        with:
-          direction: upload
-          url: https://git.fiedler.live
-          token: ${{ secrets.RELEASE_TOKEN }}
-          tag: ${{ steps.version.outputs.tag }}
-          title: "Veilbreak ${{ steps.version.outputs.tag }}"
-          release-dir: dist
-          release-notes: |
-            ## Installation
-
-            ### Binary (any Linux)
-            ```bash
-            tar xzf veilbreak-${{ steps.version.outputs.tag }}-x86_64-linux.tar.gz
-            sudo cp veilbreak-${{ steps.version.outputs.tag }}/veilbreak-tui /usr/local/bin/
-            ```
-
-            ### Debian / Ubuntu
-            ```bash
-            sudo dpkg -i veilbreak_*_amd64.deb
-            sudo apt-get install -f
-            ```
-
-            ### From source
-            ```bash
-            cargo install --git https://git.fiedler.live/tux/veilbreak.git veilbreak-tui
-            ```
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          FORGEJO_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          FORGEJO_URL: https://git.fiedler.live
+        run: |
+          printf '## Installation\n\n### Binary (any Linux)\n```bash\ntar xzf veilbreak-%s-x86_64-linux.tar.gz\nsudo cp veilbreak-%s/veilbreak-tui /usr/local/bin/\n```\n\n### Debian / Ubuntu\n```bash\nsudo dpkg -i veilbreak_*_amd64.deb\nsudo apt-get install -f\n```\n\n### From source\n```bash\ncargo install --git https://git.fiedler.live/tux/veilbreak.git veilbreak-tui\n```\n' "$TAG" "$TAG" > /tmp/forgejo-release-notes.md
+          RELEASE_ID=$(curl -sf \
+            -X POST \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"Veilbreak ${TAG}\",\"body\":$(jq -Rs . < /tmp/forgejo-release-notes.md)}" \
+            "${FORGEJO_URL}/api/v1/repos/tux/veilbreak/releases" \
+            | jq -r '.id')
+          for asset in dist/*; do
+            [ -f "$asset" ] || continue
+            curl -sf \
+              -X POST \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -F "attachment=@${asset}" \
+              "${FORGEJO_URL}/api/v1/repos/tux/veilbreak/releases/${RELEASE_ID}/assets"
+          done
 
       - name: Create GitHub release
         env:
