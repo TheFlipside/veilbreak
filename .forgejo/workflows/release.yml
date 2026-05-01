@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  release:
+    runs-on: linux
+    steps:
+      - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: https://github.com/dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - uses: https://github.com/Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Validate tag format
+        id: version
+        run: |
+          if ! printf '%s' "$GITHUB_REF_NAME" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match vN.N.N format"
+            exit 1
+          fi
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: cargo test --all --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked -p veilbreak-tui
+
+      - name: Package tarball
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir -p "dist" "staging/veilbreak-${TAG}"
+          cp target/release/veilbreak-tui "staging/veilbreak-${TAG}/"
+          cp README.md LICENSE "staging/veilbreak-${TAG}/"
+          cp -r themes "staging/veilbreak-${TAG}/"
+          tar czf "dist/veilbreak-${TAG}-x86_64-linux.tar.gz" \
+            -C staging "veilbreak-${TAG}"
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --version 2.11.1 --locked
+
+      - name: Build .deb package
+        run: cargo deb -p veilbreak-tui --no-build --output dist/
+
+      - name: Create Forgejo release
+        uses: https://code.forgejo.org/actions/forgejo-release@7425a1f9a265f2039518a0adde07fdd478667e05 # v2.6.0
+        with:
+          direction: upload
+          url: https://git.fiedler.live
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag: ${{ steps.version.outputs.tag }}
+          title: "Veilbreak ${{ steps.version.outputs.tag }}"
+          release-dir: dist
+          release-notes: |
+            ## Installation
+
+            ### Binary (any Linux)
+            ```bash
+            tar xzf veilbreak-${{ steps.version.outputs.tag }}-x86_64-linux.tar.gz
+            sudo cp veilbreak-${{ steps.version.outputs.tag }}/veilbreak-tui /usr/local/bin/
+            ```
+
+            ### Debian / Ubuntu
+            ```bash
+            sudo dpkg -i veilbreak_*_amd64.deb
+            sudo apt-get install -f
+            ```
+
+            ### From source
+            ```bash
+            cargo install --git https://git.fiedler.live/tux/veilbreak.git veilbreak-tui
+            ```
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          printf '## Installation\n\n### Binary (any Linux)\n```bash\ntar xzf veilbreak-%s-x86_64-linux.tar.gz\nsudo cp veilbreak-%s/veilbreak-tui /usr/local/bin/\n```\n\n### Debian / Ubuntu\n```bash\nsudo dpkg -i veilbreak_*_amd64.deb\nsudo apt-get install -f\n```\n\n### From source\n```bash\ncargo install --git https://github.com/TheFlipside/veilbreak.git veilbreak-tui\n```\n' "$TAG" "$TAG" > /tmp/gh-release-notes.md
+          gh release create "$TAG" \
+            --repo TheFlipside/veilbreak \
+            --title "Veilbreak $TAG" \
+            --notes-file /tmp/gh-release-notes.md \
+            -- dist/*

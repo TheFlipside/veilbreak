@@ -6,6 +6,33 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+### Fixed
+
+### Security
+
+### Changed
+
+## 0.9.0 - 2026-05-01
+
+### Added
+
+- Dedicated deauth card support: optionally use a second wireless adapter exclusively for sending deauth frames while the scan card channel-hops freely
+  - `DeauthCardSelect` setup wizard step: shown when multiple monitor-capable cards exist; "Same as scan card" option preserves current behavior with channel-hop risk warning
+  - `core::monitor` module: `MonitorGuard` RAII guard enters monitor mode on the deauth card at session start and restores managed mode on drop (including panics and crashes)
+  - `resolve_binary()`: resolves `ip`/`iw` to absolute paths from `/usr/sbin/`, `/sbin/`, `/usr/bin/`, `/bin/`; never falls back to bare-name PATH lookup
+  - `MonitorError` enum with `LinkDown`, `SetMonitor`, `SetManaged`, `LinkUp`, `InvalidArgument` variants
+  - `DashboardState::deauth_interface` field: deauth dispatch uses the dedicated card when set, falls back to scan card otherwise
+  - Header bar displays both interfaces when a dedicated deauth card is selected (`"iface: wlan0 + wlan1"`)
+  - Automatic fallback: if `MonitorGuard::enter()` fails, the deauth card is cleared and the scan card is used with a warning logged to the event pane
+  - `all_interfaces` threaded through `BandSelect` and `ModeConfirm` setup variants to avoid re-running `iw` for the deauth card step
+- Version number displayed in header title bar via `concat!` + `env!("CARGO_PKG_VERSION")` (zero-allocation, compile-time)
+- Release workflow (`.forgejo/workflows/release.yml`): tag-triggered CI builds `.tar.gz` and `.deb` artifacts, publishes to both Forgejo and GitHub
+  - Tag format validation (`^vN.N.N$`) as first step; rejects non-semver tags
+  - `cargo-deb` integration with runtime dependencies (`aircrack-ng`, `tshark`, `iw`, `iproute2`, `wireless-tools`)
+  - Theme files included in both tarball and `.deb` under `/usr/share/veilbreak/themes/`
+- AUR PKGBUILD template (`pkg/aur/PKGBUILD`) for Arch Linux packaging
+- `[package.metadata.deb]` section in `crates/tui/Cargo.toml` for Debian packaging via `cargo-deb`
+- Cross-band ghost AP explanation added to README under the filter section
 - `wifi-testlab/`: virtual WiFi lab using `mac80211_hwsim` for developing and testing veilbreak without physical hardware
   - `setup.sh`: lab lifecycle management (`--up`, `--down`, `--status`, `--restart`) — creates six virtual radios, isolates APs and client in network namespaces, enables monitor mode
   - `verify.sh`: smoke test confirming kernel module, services (hidden + 3 visible APs), client association, and monitor mode
@@ -100,6 +127,9 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- **Stdin theft from TUI**: subprocesses spawned by `iw dev` channel polling and `iw` interface detection were inheriting stdin, causing the TUI to lose keyboard input; fixed by adding `stdin(Stdio::null())` to all subprocess spawn sites
+- **`ApUpdated` clobbering known channel with `None`**: CSV parser emitted `None` channel when the field was empty, overwriting a previously known channel; `AccessPoint::channel` changed to `Option<u32>` and update logic now preserves `Some` values
+- **Unknown channel display**: header and AP list now show em dash (`—`) for unknown channels instead of `0`; deauth modal shows feedback message on dispatch
 - **Channel display in header**: `ch:` field in the header bar now shows the current channel being hopped to by the monitor interface, polled via `iw dev <iface> info` every 1 second; previously always showed `–` because the field was never populated
 - `revealed.jsonl` now captures SSID reveals from CSV updates (`ApUpdated`), not only tshark's `SsidRevealed` — fixes empty reveal log when airodump-ng's CSV parser discovers the SSID before tshark's 3-second poll fires
 - `diff_and_emit()` now triggers `ApUpdated` on SSID changes, not only power/beacon/channel changes — fixes silent reveal loss when RF conditions are stable
@@ -126,6 +156,12 @@ All notable changes to this project are documented in this file.
 
 ### Security
 
+- **Monitor mode binary path injection prevented**: `resolve_binary()` searches only root-owned system directories; never falls back to bare-name PATH resolution; `Drop` impl re-validates absolute path prefix before executing restore commands
+- **Monitor mode subprocess stdin closed**: all `ip`/`iw` subprocesses in both async and blocking paths spawned with `stdin(Stdio::null())`
+- **Unsanitized error paths hardened**: `MonitorGuard::enter()` failure message, replay error, and CSV companion path error sanitized via `sanitize_display_string()` before display
+- **Header interface name bounded**: deauth interface name truncated to 15 characters and sanitized before rendering
+- **Airodump channel poll stdin closed**: `iw dev <iface> info` subprocess in the 1-second channel polling loop now spawned with `stdin(Stdio::null())`, preventing stdin theft from the TUI
+- **Interface detection stdin closed**: `run_iw()` subprocess spawned with `stdin(Stdio::null())`
 - **Theme file symlink attack prevented**: `load_from_file()` opens with `O_NOFOLLOW | O_CLOEXEC`, rejects symlinks before reading; `fstat` on the open fd eliminates TOCTOU between stat and open
 - **Theme file size bounded**: `take(64 KiB + 1)` hard cap on read prevents memory exhaustion from large files; double-checked via `fstat` pre-read and post-read length assertion
 - **Theme TOML injection prevented**: `deny_unknown_fields` rejects unrecognised keys; color values validated against strict allowlist before conversion
@@ -206,9 +242,3 @@ All notable changes to this project are documented in this file.
 - DESIGN.md: configurable theme marked as implemented in Out of Scope; persistence format marked as decided in Open Questions
 - README.md: screenshot placeholder replaced with `demo.gif` embed
 - wifi-testlab expanded from 3 to 6 virtual radios: 3 visible APs (TP-LINK_8907_5G ch 11, DDW36563 ch 1, SuddenLink990 ch 6) alongside the hidden AP, for a realistic multi-AP demo environment
-
-### 0.1.0 - 2026-04-29
-
-### Added
-
-- First release version

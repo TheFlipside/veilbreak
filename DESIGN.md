@@ -373,5 +373,8 @@ Worth reading before/during implementation:
   (produced by `airodump-ng`) plus `revealed.jsonl` (NDJSON, one record per
   revealed SSID) in the session output directory. Written via
   `core::persist::write_reveal_entry()`.
-- Distribution: `cargo install`, or also a packaged `.deb` / AUR / Nix flake?
-  Decide before public release.
+- ~~Distribution~~ — **Decided.** `cargo install` (works out of the box),
+  `.deb` via `cargo-deb` (with runtime dependencies declared), and AUR
+  `PKGBUILD`. Nix flake deferred unless there is demand. Release workflow
+  (`.forgejo/workflows/release.yml`) builds and publishes `.tar.gz` and
+  `.deb` on `v*` tags to both Forgejo and GitHub.

@@ -201,6 +201,22 @@ Available filters:
 - **Hidden only** — show only APs with concealed SSIDs
 - **Band** — cycle through All, 2.4 GHz (channels 1-14), 5 GHz (channels 36+)
 
+> **Note — cross-band ghost APs:** When scanning a single band you may
+> occasionally see APs from the other band appear in the list, sometimes
+> briefly marked as hidden before their SSID fills in. This is normal
+> behaviour, not a bug. The `--band` flag controls which channels
+> `airodump-ng` hops across, but this is a software-level channel list
+> with no kernel or firmware enforcement. During startup — or when the
+> hop schedule has not yet stabilised — the card may briefly visit
+> channels outside the requested band. Any AP heard during that window
+> is written to the CSV and persists in the table. Because the card is
+> not dwelling on that channel, the first captured frame may lack the
+> SSID field, causing a momentary "hidden" marker that resolves once a
+> complete beacon or probe response arrives. Dual-band APs often use
+> sequential MAC addresses for their radios (the offset direction is
+> vendor-specific), so the ghost will appear as a separate BSSID from
+> the same AP you already see on the correct band.
+
 ## Theming
 
 Veilbreak supports custom color themes via TOML files. Three presets ship in

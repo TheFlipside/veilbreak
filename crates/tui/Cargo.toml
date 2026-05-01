@@ -18,3 +18,24 @@ anyhow = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
+
+[package.metadata.deb]
+name = "veilbreak"
+maintainer = "Max Fiedler <max.fiedler1988@pm.me>"
+copyright = "2025-2026 Max Fiedler"
+license-file = ["../../LICENSE", "0"]
+depends = "$auto, aircrack-ng, tshark, iw, iproute2, wireless-tools"
+section = "net"
+priority = "optional"
+extended-description = """Veilbreak is a terminal-based tool that reveals hidden WiFi SSIDs \
+from a single keyboard-driven dashboard. It orchestrates airodump-ng, tshark, \
+and aireplay-ng behind the scenes, replacing the manual multi-terminal workflow \
+with one unified interface."""
+assets = [
+    ["../../target/release/veilbreak-tui", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/veilbreak/", "644"],
+    ["../../LICENSE", "usr/share/doc/veilbreak/", "644"],
+    ["../../themes/default.toml", "usr/share/veilbreak/themes/", "644"],
+    ["../../themes/high-contrast.toml", "usr/share/veilbreak/themes/", "644"],
+    ["../../themes/solarized-dark.toml", "usr/share/veilbreak/themes/", "644"],
+]

@@ -1,0 +1,42 @@
+# Maintainer: Max Fiedler <max.fiedler1988@pm.me>
+pkgname=veilbreak
+pkgver=0.9.0
+pkgrel=1
+pkgdesc='Terminal tool that reveals hidden WiFi SSIDs from a keyboard-driven dashboard'
+arch=('x86_64')
+url='https://git.fiedler.live/tux/veilbreak'
+license=('LGPL-3.0-only')
+depends=('aircrack-ng' 'wireshark-cli' 'iw' 'iproute2' 'wireless_tools')
+makedepends=('rust')
+# Forgejo archives extract to "$pkgname/" (no version suffix).
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+# Update after each release: sha256sum $pkgname-$pkgver.tar.gz
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release -p veilbreak-tui
+}
+
+package() {
+    cd "$pkgname"
+    install -Dm755 "target/release/veilbreak-tui" "$pkgdir/usr/bin/veilbreak-tui"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    # Install theme presets under /usr/share/veilbreak/themes/
+    if [ -d themes ]; then
+        for _theme in themes/*.toml; do
+            [ -f "$_theme" ] || continue
+            install -Dm644 "$_theme" \
+                "$pkgdir/usr/share/$pkgname/themes/$(basename "$_theme")"
+        done
+    fi
+}
