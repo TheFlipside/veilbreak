@@ -50,7 +50,7 @@ jobs:
         run: cargo deb -p veilbreak-tui --no-build --output dist/
 
       - name: Create Forgejo release
-        uses: https://code.forgejo.org/actions/forgejo-release@7425a1f9a265f2039518a0adde07fdd478667e05 # v2.6.0
+        uses: https://code.forgejo.org/actions/forgejo-release@v2.6.0
         with:
           direction: upload
           url: https://git.fiedler.live
