@@ -44,7 +44,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" veilbreak ")
+                .title(concat!(" veilbreak v", env!("CARGO_PKG_VERSION"), " "))
                 .title_style(theme::title())
                 .border_style(theme::border()),
         )
