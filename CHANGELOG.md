@@ -6,6 +6,16 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+### Fixed
+
+### Security
+
+### Changed
+
+## 0.9.1 - 2026-05-01
+
+### Added
+
 - `is_p2p_bssid()` validator in `core::validate`: detects Wi-Fi Alliance OUI (`50:6F:9A`) BSSIDs used by Wi-Fi Direct / P2P group owners; gates on `is_valid_bssid()` for safety
 - `wifi_direct` theme style (default: yellow) for P2P BSSID highlighting in all three preset themes (`default.toml`, `solarized-dark.toml`, `high-contrast.toml`)
 - "Hide Wi-Fi Direct" filter in the filter modal (`f` key): hides BSSIDs using the Wi-Fi Alliance OUI (`50:6F:9A`), commonly seen from Wi-Fi Direct / P2P group owners
@@ -15,8 +25,6 @@ All notable changes to this project are documented in this file.
 - "Interface Naming" section in README explaining systemd's predictable naming (`wlx...`) and how to revert to `wlan0`-style names via `net.ifnames=0`
 - 5 unit tests for `is_p2p_bssid()` covering valid P2P BSSIDs, non-P2P BSSIDs, and malformed input
 - 4 unit tests for `FilterState::matches()` covering `hide_p2p`, `hidden_only`, and band filters
-
-### Fixed
 
 ### Security
 
