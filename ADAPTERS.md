@@ -36,18 +36,19 @@ Status is one of:
 | Panda PAU09                    | Ralink RT5572     | `148f:5572` | `rt2800usb`            | 2.4 + 5 GHz      | Community |
 | Alfa AWUS036ACHM               | MediaTek MT7610U  | `0e8d:7610` | `mt76x0u`              | 2.4 + 5 GHz      | Community |
 | Alfa AWUS036ACH                | Realtek RTL8812AU | `0bda:8812` | `rtw88` (kernel 6.14+) | 2.4 + 5 GHz      | Community |
+| Alfa AWUS036AXML               | MediaTek MT7961   | `0e8d:7961` | `mt7921u`              | 2.4 + 5 + 6 GHz  | Verified  |
 
 ### Monitor Mode Only (No Injection)
 
-| Adapter             | Chipset         | USB/PCI ID  | Driver    | Band             | Status   |
-| ------------------- | --------------- | ----------- | --------- | ---------------- | -------- |
-| Alfa AWUS036AXML    | MediaTek MT7961 | `0e8d:7961` | `mt7921u` | 2.4 + 5 + 6 GHz  | Verified |
-| Intel Wi-Fi 6 AX200 | Intel AX200NGW  | `8086:2723` | `iwlwifi` | 2.4 + 5 GHz      | Verified |
+| Adapter             | Chipset        | USB/PCI ID  | Driver    | Band           | Status   |
+| ------------------- | -------------- | ----------- | --------- | -------------- | -------- |
+| Intel Wi-Fi 6 AX200 | Intel AX200NGW | `8086:2723` | `iwlwifi` | 2.4 + 5 GHz    | Verified |
 
-> **Note on MT7961 / MT7921:** Some community sources report injection
-> working on the USB variant (MT7921AU) with kernels 6.6+. Our testing on
-> kernel 6.17 with the AWUS036AXML consistently fails `aireplay-ng --test`.
-> If you have different results, please open an issue.
+> **Note on MT7961 / MT7921:** Injection works on the USB variant
+> (MT7921AU / AWUS036AXML) with `mt7921u` on kernel 6.17. Earlier testing
+> showed inconsistent results — a reboot after entering monitor mode may be
+> required. If injection fails, try `aireplay-ng --test` again after a
+> clean reboot.
 
 ### Known Incompatible
 
