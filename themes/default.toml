@@ -1,0 +1,49 @@
+# Veilbreak default theme.
+#
+# Copy to ~/.config/veilbreak/theme.toml and customize, or load directly
+# with --theme themes/default.toml.
+#
+# All fields are optional. Omitted values use the built-in defaults shown
+# here. Partial overrides merge: setting only `fg` on `title` preserves
+# the default `bold` modifier.
+#
+# Colors: any ratatui named color (case-insensitive, underscores optional)
+# or a "#RRGGBB" hex string.
+#   Named: black, red, green, yellow, blue, magenta, cyan, gray, white,
+#          dark_gray, light_red, light_green, light_yellow, light_blue,
+#          light_magenta, light_cyan.
+#
+# Modifiers (all optional, default false unless noted):
+#   bold, italic, underline
+
+[border]
+fg = "dark_gray"
+
+[border_focused]
+fg = "cyan"
+
+[border_danger]
+fg = "red"
+
+[header]
+fg = "white"
+
+[title]
+fg = "cyan"
+bold = true
+
+[selected]
+fg = "white"
+bg = "dark_gray"
+
+[keybind_key]
+fg = "cyan"
+
+[keybind_desc]
+fg = "dark_gray"
+
+[revealed]
+fg = "green"
+
+[dim]
+fg = "dark_gray"

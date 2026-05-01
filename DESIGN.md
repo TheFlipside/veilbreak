@@ -353,7 +353,9 @@ Worth reading before/during implementation:
 ## 11. Out of Scope (for now)
 
 - Channel locking and pause/resume hopping.
-- Configurable theme (`theme.rs`).
+- ~~Configurable theme~~ — **Implemented.** TOML theme file loaded from
+  `$XDG_CONFIG_HOME/veilbreak/theme.toml` or `--theme <FILE>`. Ships with
+  `default`, `solarized-dark`, and `high-contrast` presets in `themes/`.
 - WPA handshake capture and cracking (covered well by existing tools).
 - WPS attacks.
 - 5GHz/6GHz beyond what the chosen card supports natively.
@@ -367,7 +369,9 @@ Worth reading before/during implementation:
 - Should the channel hopping pattern be configurable (2.4-only, 5-only,
   custom list), or rely on `airodump-ng`'s defaults? Defaulting to airodump
   is simpler; configurability is a stretch goal.
-- Persistence format for session output — raw pcap plus a structured JSON
-  log of events seems sufficient. Worth revisiting after Phase 3.
+- ~~Persistence format for session output~~ — **Decided.** Raw pcap
+  (produced by `airodump-ng`) plus `revealed.jsonl` (NDJSON, one record per
+  revealed SSID) in the session output directory. Written via
+  `core::persist::write_reveal_entry()`.
 - Distribution: `cargo install`, or also a packaged `.deb` / AUR / Nix flake?
   Decide before public release.

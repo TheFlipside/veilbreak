@@ -33,6 +33,10 @@ struct Cli {
     /// Directory for session output (captures, logs). Created automatically if omitted.
     #[arg(long, value_name = "DIR")]
     output_dir: Option<PathBuf>,
+    /// Path to a custom theme TOML file. Defaults to
+    /// `$XDG_CONFIG_HOME/veilbreak/theme.toml` if it exists.
+    #[arg(long, value_name = "FILE")]
+    theme: Option<PathBuf>,
 }
 
 /// Atomically creates a temp directory using `mkdtemp(3)`, avoiding the
@@ -96,6 +100,30 @@ fn init_logging(output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+fn load_theme(explicit: Option<&Path>) -> Result<()> {
+    let loaded = if let Some(path) = explicit {
+        Some(theme::load_from_file(path)?)
+    } else if let Some(path) = theme::default_path() {
+        match theme::load_from_file(&path) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                if path.exists() {
+                    // eprintln is intentional: runs before tracing is active
+                    eprintln!("warning: ignoring theme at {}: {e}", path.display());
+                }
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(t) = loaded {
+        theme::init(t);
+    }
+    Ok(())
+}
+
 async fn run_tui(
     replay: Option<String>,
     band: Option<veilbreak_core::Band>,
@@ -112,12 +140,15 @@ async fn run_tui(
     result
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // All pre-flight work runs here, before the tokio runtime starts.
+    // This is required because `load_theme` may call `getpwnam(3)` (via
+    // `default_path` → `invoking_user_home`), which is not thread-safe.
     let cli = Cli::parse();
 
     let output_dir = resolve_output_dir(cli.output_dir)?;
     init_logging(&output_dir)?;
+    load_theme(cli.theme.as_deref())?;
 
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -126,7 +157,9 @@ async fn main() -> Result<()> {
     }));
 
     enable_raw_mode()?;
-    let result = run_tui(cli.replay, cli.band, &output_dir).await;
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let result = rt.block_on(run_tui(cli.replay, cli.band, &output_dir));
     restore_terminal();
 
     let safe_path =

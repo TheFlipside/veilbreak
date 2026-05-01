@@ -10,20 +10,20 @@ use crate::theme;
 /// Renders the event log pane into the given area.
 pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardState) {
     let border_style = if dash.focus == FocusPane::EventLog {
-        theme::BORDER_FOCUSED
+        theme::border_focused()
     } else {
-        theme::BORDER
+        theme::border()
     };
 
     let block = Block::default()
         .title(" Events ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
         .border_style(border_style);
 
     if state.event_log.is_empty() {
         let content = Paragraph::new("  (no events)")
-            .style(theme::DIM)
+            .style(theme::dim())
             .block(block);
         frame.render_widget(content, area);
         return;
@@ -43,7 +43,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
             let mins = entry.elapsed_secs / 60;
             let secs = entry.elapsed_secs % 60;
             Line::from(vec![
-                Span::styled(format!(" {mins:02}:{secs:02}  "), theme::DIM),
+                Span::styled(format!(" {mins:02}:{secs:02}  "), theme::dim()),
                 Span::raw(&entry.message),
             ])
         })

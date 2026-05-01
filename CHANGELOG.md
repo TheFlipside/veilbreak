@@ -113,8 +113,25 @@ All notable changes to this project are documented in this file.
 - `--replay` mode: elapsed time now ticks continuously (periodic redraw timer always active); event log timestamps no longer all show `00:00` (replay events applied as summary, not individually)
 - Startup delay eliminated: interface detection runs in a background task while the loading screen renders immediately
 
+- Configurable color theme via TOML files (`--theme <FILE>` or auto-discovered at `$XDG_CONFIG_HOME/veilbreak/theme.toml`)
+- `Theme` struct with `OnceLock` singleton pattern replacing hardcoded `const` style values
+- `ThemeFile` TOML schema with `deny_unknown_fields` — partial overrides merge with built-in defaults
+- `default_path()` config resolution: `$XDG_CONFIG_HOME` → `$SUDO_USER` home via `getpwnam` → `$HOME`
+- `load_from_file()` hardened file loader: `O_NOFOLLOW | O_CLOEXEC`, `fstat`-based checks, `take()` size cap (64 KiB)
+- Strict color parsing: named color allowlist (case-insensitive, with `grey` aliases) + `#RRGGBB` hex
+- Modifier overrides via `Option<bool>`: `None` inherits, `Some(true)` adds, `Some(false)` explicitly removes
+- 3 preset themes in `themes/`: `default.toml`, `solarized-dark.toml`, `high-contrast.toml`
+- 11 unit tests for theme loading (color parsing, partial overrides, modifier inheritance, unknown field rejection)
+- `toml` crate v1.1 added to workspace dependencies
+
 ### Security
 
+- **Theme file symlink attack prevented**: `load_from_file()` opens with `O_NOFOLLOW | O_CLOEXEC`, rejects symlinks before reading; `fstat` on the open fd eliminates TOCTOU between stat and open
+- **Theme file size bounded**: `take(64 KiB + 1)` hard cap on read prevents memory exhaustion from large files; double-checked via `fstat` pre-read and post-read length assertion
+- **Theme TOML injection prevented**: `deny_unknown_fields` rejects unrecognised keys; color values validated against strict allowlist before conversion
+- **`getpwnam` thread-safety upheld**: `main()` changed from `#[tokio::main] async fn` to sync `fn` with manual `Runtime::new()` — all pre-flight work (CLI, logging, theme) runs before any tokio threads spawn
+- **`pw_dir` null dereference prevented**: explicit null check on `(*pw).pw_dir` before `CStr::from_ptr` — POSIX does not guarantee non-null `pw_dir` on all NSS backends
+- **Theme auto-discovery TOCTOU eliminated**: `load_from_file` called unconditionally; `exists()` only checked in error path for diagnostic warning
 - **Aireplay command injection prevented**: `run_deauth()` validates BSSID, client MAC, and interface name via strict regex before passing to `Command::arg()`; no shell interpolation
 - **Aireplay stderr bounded**: stderr from failed `aireplay-ng` truncated to 512 bytes via `truncate_utf8` (UTF-8 boundary safe) and sanitized before display
 - **Aireplay stdin closed**: subprocess spawned with `stdin(Stdio::null())` to prevent ambient terminal inheritance
@@ -184,7 +201,9 @@ All notable changes to this project are documented in this file.
 - `FilterState::matches` hidden-only filter now includes revealed APs (previously they vanished from the filtered view on reveal)
 - Filter modal label changed from "Hidden only" to "Hidden/revealed" to reflect the updated filter semantics
 - Detail pane SSID display: revealed SSIDs show `"{name} (revealed)"` in green; hidden shows `"<hidden>"` in dim; removed redundant re-sanitization (fields are pre-sanitized at state write time)
-- DESIGN.md Phase 5 updated to reflect implemented features; channel locking and configurable theme moved to Out of Scope
+- `main()` changed from `#[tokio::main] async fn` to sync `fn` with manual `tokio::runtime::Runtime::new()` + `block_on()` for `getpwnam` thread-safety
+- Widget files (`ap_list`, `detail`, `events`, `header`, `keybinds`, `modal`) migrated from `theme::CONSTANT` to `theme::function()` accessors
+- DESIGN.md: configurable theme marked as implemented in Out of Scope; persistence format marked as decided in Open Questions
 - README.md: screenshot placeholder replaced with `demo.gif` embed
 - wifi-testlab expanded from 3 to 6 virtual radios: 3 visible APs (TP-LINK_8907_5G ch 11, DDW36563 ch 1, SuddenLink990 ch 6) alongside the hidden AP, for a realistic multi-AP demo environment
 

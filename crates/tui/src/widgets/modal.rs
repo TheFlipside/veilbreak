@@ -50,9 +50,9 @@ fn draw_interface_select(
 
     let block = Block::default()
         .title(" Select Monitoring Interface ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_FOCUSED);
+        .border_style(theme::border_focused());
 
     let items: Vec<ListItem> = interfaces
         .iter()
@@ -61,7 +61,7 @@ fn draw_interface_select(
             let monitor_tag = if iface.monitor_capable { " [mon]" } else { "" };
             let prefix = if i == selected { "\u{25b6} " } else { "  " };
             let style = if i == selected {
-                theme::SELECTED
+                theme::selected()
             } else {
                 Style::default()
             };
@@ -88,16 +88,16 @@ fn draw_band_select(frame: &mut Frame, area: Rect, selected: Band) {
 
     let block = Block::default()
         .title(" Select Scan Band ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_FOCUSED);
+        .border_style(theme::border_focused());
 
     let items: Vec<ListItem> = bands
         .iter()
         .map(|&band| {
             let prefix = if band == selected { "\u{25b6} " } else { "  " };
             let style = if band == selected {
-                theme::SELECTED
+                theme::selected()
             } else {
                 Style::default()
             };
@@ -122,9 +122,9 @@ fn draw_mode_confirm(
 
     let block = Block::default()
         .title(" Confirm Mode ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_FOCUSED);
+        .border_style(theme::border_focused());
 
     let mode_text = if dual_card {
         "Dual-card mode: host connectivity preserved."
@@ -163,9 +163,9 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
             " Deauth: {} ",
             sanitize_display_string(&modal.bssid)
         ))
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_DANGER);
+        .border_style(theme::border_danger());
 
     let mut items: Vec<ListItem> = Vec::with_capacity(item_count + 2);
 
@@ -175,7 +175,7 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
         "  "
     };
     let broadcast_style = if modal.selected == 0 {
-        theme::SELECTED
+        theme::selected()
     } else {
         Style::default()
     };
@@ -191,7 +191,7 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
             "  "
         };
         let style = if modal.selected == idx {
-            theme::SELECTED
+            theme::selected()
         } else {
             Style::default()
         };
@@ -206,9 +206,9 @@ pub fn draw_deauth_modal(frame: &mut Frame, modal: &DeauthModal) {
     items.push(ListItem::new(""));
     items.push(ListItem::new(Line::from(vec![
         Span::raw("  ["),
-        Span::styled("Enter", theme::KEYBIND_KEY),
+        Span::styled("Enter", theme::keybind_key()),
         Span::raw("] send  ["),
-        Span::styled("Esc", theme::KEYBIND_KEY),
+        Span::styled("Esc", theme::keybind_key()),
         Span::raw("] cancel"),
     ])));
 
@@ -242,15 +242,15 @@ pub fn draw_help_modal(frame: &mut Frame) {
 
     let block = Block::default()
         .title(" Keybind Reference ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_FOCUSED);
+        .border_style(theme::border_focused());
 
     let mut items: Vec<ListItem> = HELP_ENTRIES
         .iter()
         .map(|(key, desc)| {
             ListItem::new(Line::from(vec![
-                Span::styled(format!("  {key:<20}"), theme::KEYBIND_KEY),
+                Span::styled(format!("  {key:<20}"), theme::keybind_key()),
                 Span::raw(*desc),
             ]))
         })
@@ -259,7 +259,7 @@ pub fn draw_help_modal(frame: &mut Frame) {
     items.push(ListItem::new(""));
     items.push(ListItem::new(Line::from(vec![
         Span::raw("  ["),
-        Span::styled("Esc", theme::KEYBIND_KEY),
+        Span::styled("Esc", theme::keybind_key()),
         Span::raw("] close"),
     ])));
 
@@ -276,19 +276,19 @@ pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterStat
 
     let block = Block::default()
         .title(" Filters ")
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
-        .border_style(theme::BORDER_FOCUSED);
+        .border_style(theme::border_focused());
 
     let hidden_prefix = if selected == 0 { "\u{25b6} " } else { "  " };
     let band_prefix = if selected == 1 { "\u{25b6} " } else { "  " };
     let hidden_style = if selected == 0 {
-        theme::SELECTED
+        theme::selected()
     } else {
         Style::default()
     };
     let band_style = if selected == 1 {
-        theme::SELECTED
+        theme::selected()
     } else {
         Style::default()
     };
@@ -302,9 +302,9 @@ pub fn draw_filter_modal(frame: &mut Frame, selected: usize, filter: &FilterStat
         ListItem::new(""),
         ListItem::new(Line::from(vec![
             Span::raw("  ["),
-            Span::styled("Enter", theme::KEYBIND_KEY),
+            Span::styled("Enter", theme::keybind_key()),
             Span::raw("] toggle  ["),
-            Span::styled("Esc", theme::KEYBIND_KEY),
+            Span::styled("Esc", theme::keybind_key()),
             Span::raw("] close"),
         ])),
     ];

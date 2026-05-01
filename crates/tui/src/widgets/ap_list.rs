@@ -15,14 +15,14 @@ pub fn draw(
     dash: &mut DashboardState,
 ) {
     let border_style = if dash.focus == FocusPane::ApList {
-        theme::BORDER_FOCUSED
+        theme::border_focused()
     } else {
-        theme::BORDER
+        theme::border()
     };
 
     let block = Block::default()
         .title(format!(" Access Points [{}] ", dash.sort))
-        .title_style(theme::TITLE)
+        .title_style(theme::title())
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -31,20 +31,20 @@ pub fn draw(
             vec![Row::new(vec!["  (no access points)"])],
             [Constraint::Fill(1)],
         )
-        .style(theme::DIM)
+        .style(theme::dim())
         .block(block);
         frame.render_widget(empty, area);
         return;
     }
 
     let header =
-        Row::new(vec!["BSSID", "CH", "PWR", "ENC", "CLI", "BCN", "SSID"]).style(theme::HEADER);
+        Row::new(vec!["BSSID", "CH", "PWR", "ENC", "CLI", "BCN", "SSID"]).style(theme::header());
 
     let rows: Vec<Row> = sorted
         .iter()
         .map(|&(_, ap)| {
             let (ssid_display, ssid_style) = match (ap.ssid.as_deref(), ap.revealed) {
-                (Some(s), true) => (s, theme::REVEALED),
+                (Some(s), true) => (s, theme::revealed()),
                 (Some(s), false) => (s, Style::default()),
                 (None, _) => (if ap.hidden { "<hid>" } else { "" }, Style::default()),
             };
@@ -75,7 +75,7 @@ pub fn draw(
         .header(header)
         .block(block)
         .highlight_symbol("\u{25b6} ")
-        .row_highlight_style(theme::SELECTED)
+        .row_highlight_style(theme::selected())
         .highlight_spacing(HighlightSpacing::Always);
 
     frame.render_stateful_widget(table, area, &mut dash.table_state);

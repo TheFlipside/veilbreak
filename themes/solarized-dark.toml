@@ -1,0 +1,36 @@
+# Solarized Dark theme for Veilbreak.
+#
+# Based on Ethan Schoonover's Solarized palette.
+# Best with a terminal configured for the Solarized Dark base colors.
+
+[border]
+fg = "#586e75"          # base01
+
+[border_focused]
+fg = "#2aa198"          # cyan
+
+[border_danger]
+fg = "#dc322f"          # red
+
+[header]
+fg = "#93a1a1"          # base1
+
+[title]
+fg = "#268bd2"          # blue
+bold = true
+
+[selected]
+fg = "#fdf6e3"          # base3
+bg = "#073642"          # base02
+
+[keybind_key]
+fg = "#2aa198"          # cyan
+
+[keybind_desc]
+fg = "#586e75"          # base01
+
+[revealed]
+fg = "#859900"          # green
+
+[dim]
+fg = "#586e75"          # base01

@@ -1,0 +1,39 @@
+# High-contrast theme for Veilbreak.
+#
+# Maximises readability on low-quality displays or in bright environments.
+
+[border]
+fg = "white"
+
+[border_focused]
+fg = "yellow"
+bold = true
+
+[border_danger]
+fg = "light_red"
+bold = true
+
+[header]
+fg = "white"
+bold = true
+
+[title]
+fg = "yellow"
+bold = true
+
+[selected]
+fg = "black"
+bg = "white"
+
+[keybind_key]
+fg = "yellow"
+
+[keybind_desc]
+fg = "white"
+
+[revealed]
+fg = "light_green"
+bold = true
+
+[dim]
+fg = "gray"

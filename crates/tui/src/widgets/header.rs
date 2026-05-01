@@ -31,10 +31,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
             Block::default()
                 .borders(Borders::ALL)
                 .title(" veilbreak ")
-                .title_style(theme::TITLE)
-                .border_style(theme::BORDER),
+                .title_style(theme::title())
+                .border_style(theme::border()),
         )
-        .style(theme::HEADER);
+        .style(theme::header());
 
     frame.render_widget(header, area);
 }

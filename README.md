@@ -119,6 +119,7 @@ To replay a previously captured pcap file (no root required, no live capture):
 | `--replay <PCAP>`    | Replay a captured pcap file instead of starting a live capture session. No root or wireless card required.                                      |
 | `--band <BAND>`      | Wi-Fi band: `bg` (2.4 GHz), `a` (5 GHz), or `abg` (both). Defaults to `bg`. Skips the band prompt. `abg` is unreliable on some drivers.         |
 | `--output-dir <DIR>` | Use an existing directory for session output (captures, logs, `revealed.jsonl`). Must already exist. Defaults to a randomized dir in `/tmp`.    |
+| `--theme <FILE>`     | Load a custom theme TOML file. See [Theming](#theming) below.                                                                                   |
 | `--help`             | Print usage information.                                                                                                                        |
 | `--version`          | Print version.                                                                                                                                  |
 
@@ -159,6 +160,82 @@ Available filters:
 
 - **Hidden only** — show only APs with concealed SSIDs
 - **Band** — cycle through All, 2.4 GHz (channels 1-14), 5 GHz (channels 36+)
+
+## Theming
+
+Veilbreak supports custom color themes via TOML files. Three presets ship in
+the `themes/` directory: `default.toml`, `solarized-dark.toml`, and
+`high-contrast.toml`.
+
+### Loading a theme
+
+Load a theme file explicitly with the `--theme` flag:
+
+```bash
+sudo ./target/release/veilbreak-tui --theme themes/solarized-dark.toml
+```
+
+Or place a file at the default config path and it will be picked up
+automatically:
+
+```bash
+mkdir -p ~/.config/veilbreak
+cp themes/solarized-dark.toml ~/.config/veilbreak/theme.toml
+sudo ./target/release/veilbreak-tui
+```
+
+The auto-discovered config path is resolved as follows:
+
+1. `$XDG_CONFIG_HOME/veilbreak/theme.toml` (if `XDG_CONFIG_HOME` is set)
+2. Otherwise, under `sudo`: `~<SUDO_USER>/.config/veilbreak/theme.toml`
+   (the original user's home is resolved via `getpwnam`)
+3. Otherwise: `$HOME/.config/veilbreak/theme.toml`
+
+Steps 2 and 3 are mutually exclusive — only the first match is used.
+
+The `--theme` flag always takes priority over auto-discovery. If the
+auto-discovered file is missing, built-in defaults are used silently. If it
+exists but is malformed, a warning is printed to stderr and defaults are used.
+
+### Writing a theme
+
+Every field is optional — omitted values inherit from the built-in defaults.
+Partial overrides merge: setting only `fg` on `title` preserves its default
+`bold` modifier.
+
+```toml
+[border]
+fg = "dark_gray"
+
+[border_focused]
+fg = "cyan"
+
+[title]
+fg = "cyan"
+bold = true
+
+[selected]
+fg = "white"
+bg = "dark_gray"
+
+[revealed]
+fg = "green"
+```
+
+**Styles:** `border`, `border_focused`, `border_danger`, `header`, `title`,
+`selected`, `keybind_key`, `keybind_desc`, `revealed`, `dim`.
+
+**Colors:** Any ratatui named color (case-insensitive, underscores optional) or
+`#RRGGBB` hex. Named colors: `black`, `red`, `green`, `yellow`, `blue`,
+`magenta`, `cyan`, `gray`/`grey`, `white`, `dark_gray`, `light_red`,
+`light_green`, `light_yellow`, `light_blue`, `light_magenta`, `light_cyan`.
+
+**Modifiers:** `bold`, `italic`, `underline` (all optional booleans). Unset
+modifiers keep the built-in default (e.g. `title` is bold by default; all
+others are not). Set `bold = false` to explicitly remove a default modifier.
+
+Unknown keys are rejected to catch typos — loading will error on unrecognised
+style names or style fields.
 
 ## License
 

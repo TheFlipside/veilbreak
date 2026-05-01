@@ -39,9 +39,9 @@ pub fn draw(frame: &mut Frame, area: Rect, dash: &DashboardState) {
         .flat_map(|(key, desc)| {
             [
                 Span::raw(" ["),
-                Span::styled(*key, theme::KEYBIND_KEY),
+                Span::styled(*key, theme::keybind_key()),
                 Span::raw("] "),
-                Span::styled(*desc, theme::KEYBIND_DESC),
+                Span::styled(*desc, theme::keybind_desc()),
             ]
         })
         .collect();
