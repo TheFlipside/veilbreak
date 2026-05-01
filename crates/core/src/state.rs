@@ -56,6 +56,7 @@ impl AppState {
                 }
                 if self.access_points.len() < MAX_ACCESS_POINTS {
                     let mut sanitized = ap.clone();
+                    sanitized.bssid = sanitized.bssid.to_uppercase();
                     sanitized.encryption = validate::sanitize_display_string(&sanitized.encryption);
                     sanitized.ssid = sanitized.ssid.map(|s| {
                         validate::sanitize_display_string(validate::truncate_utf8(
@@ -72,7 +73,8 @@ impl AppState {
                 if !validate::is_valid_bssid(&ap.bssid) {
                     return;
                 }
-                if let Some(entry) = self.access_points.get_mut(&ap.bssid) {
+                let bssid = ap.bssid.to_uppercase();
+                if let Some(entry) = self.access_points.get_mut(&bssid) {
                     entry.power = ap.power;
                     if ap.channel.is_some() {
                         entry.channel = ap.channel;
@@ -100,12 +102,14 @@ impl AppState {
                 {
                     return;
                 }
-                if let Some(ap) = self.access_points.get_mut(&client.bssid)
+                let bssid = client.bssid.to_uppercase();
+                if let Some(ap) = self.access_points.get_mut(&bssid)
                     && (ap.clients.len() < MAX_CLIENTS_PER_AP
                         || ap.clients.contains_key(&client.mac))
                 {
+                    let mac = client.mac.to_uppercase();
                     ap.clients
-                        .entry(client.mac.clone())
+                        .entry(mac)
                         .and_modify(|c| c.power = client.power)
                         .or_insert_with(|| client.clone());
                 }
@@ -114,7 +118,8 @@ impl AppState {
                 if !validate::is_valid_bssid(bssid) {
                     return;
                 }
-                if let Some(ap) = self.access_points.get_mut(bssid) {
+                let bssid = bssid.to_uppercase();
+                if let Some(ap) = self.access_points.get_mut(&bssid) {
                     let sanitized = validate::sanitize_display_string(validate::truncate_utf8(
                         ssid,
                         validate::MAX_ESSID_LEN,

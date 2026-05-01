@@ -498,14 +498,18 @@ fn is_pid_alive(pid: u32) -> bool {
 
 async fn drain_stderr(stderr: tokio::process::ChildStderr) {
     use tokio::io::{AsyncBufReadExt, BufReader};
+    const MAX_LINE_LEN: usize = 512;
     let mut lines = BufReader::new(stderr).lines();
     loop {
         match lines.next_line().await {
-            Ok(Some(line)) => tracing::debug!(
-                target: "airodump_stderr",
-                "{}",
-                validate::sanitize_display_string(&line),
-            ),
+            Ok(Some(line)) => {
+                let capped = validate::truncate_utf8(&line, MAX_LINE_LEN);
+                tracing::debug!(
+                    target: "airodump_stderr",
+                    "{}",
+                    validate::sanitize_display_string(capped),
+                );
+            }
             Ok(None) => break,
             Err(e) => {
                 tracing::warn!("airodump stderr read error: {e}");

@@ -90,10 +90,16 @@ pub fn parse_ek_json_line(line: &str) -> Option<RevealPacket> {
 pub fn build_display_filter(bssids: &[&str]) -> String {
     let subtype_filter = "(wlan.fc.type_subtype == 0x05 || wlan.fc.type_subtype == 0x00 || wlan.fc.type_subtype == 0x02 || wlan.fc.type_subtype == 0x08)";
 
+    // Safety: filter injection is prevented because `is_valid_bssid` restricts
+    // values to `[0-9A-Fa-f:]` (17 bytes exactly), which excludes all tshark
+    // filter grammar operators. Do not interpolate non-BSSID values here.
     let bssid_parts: Vec<String> = bssids
         .iter()
         .filter(|b| validate::is_valid_bssid(b))
-        .map(|b| format!("wlan.bssid == {}", b.to_lowercase()))
+        .map(|b| {
+            debug_assert!(validate::is_valid_bssid(b));
+            format!("wlan.bssid == {}", b.to_lowercase())
+        })
         .collect();
 
     match bssid_parts.len() {

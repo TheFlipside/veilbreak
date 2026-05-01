@@ -13,6 +13,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AppState, dash: &DashboardSta
     let mins = elapsed / 60;
     let secs = elapsed % 60;
 
+    if let Some(name) = &dash.interface_name {
+        debug_assert!(veilbreak_core::validate::is_valid_interface_name(name));
+    }
     let iface = dash.interface_name.as_deref().unwrap_or("\u{2014}");
     let ch = state
         .current_channel

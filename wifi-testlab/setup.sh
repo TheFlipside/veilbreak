@@ -205,9 +205,8 @@ EOF
 
     # hostapd requires the interface in its config file — substitute the
     # actual name discovered from hwsim.
-    sed "s|^interface=.*|interface=$iface_ap|" "$CONF_DIR/hostapd.conf" \
-        > "$RUNDIR/hostapd.conf"
-    chmod 600 "$RUNDIR/hostapd.conf"
+    (umask 077 && sed "s|^interface=.*|interface=$iface_ap|" "$CONF_DIR/hostapd.conf" \
+        > "$RUNDIR/hostapd.conf")
 
     info "starting hostapd (hidden SSID on channel 6)"
     ip netns exec "$NS_AP" hostapd -B \
@@ -234,9 +233,8 @@ EOF
 
         ip netns exec "$NS_AP" ip link set "$vis_iface" up
 
-        sed "s|^interface=.*|interface=$vis_iface|" "$CONF_DIR/${conf_name}.conf" \
-            > "$RUNDIR/${conf_name}.conf"
-        chmod 600 "$RUNDIR/${conf_name}.conf"
+        (umask 077 && sed "s|^interface=.*|interface=$vis_iface|" "$CONF_DIR/${conf_name}.conf" \
+            > "$RUNDIR/${conf_name}.conf")
 
         ip netns exec "$NS_AP" hostapd -B \
             -P "$RUNDIR/${conf_name}.pid" \
@@ -290,8 +288,13 @@ EOF
     ip netns exec "$NS_CLIENT" ip addr add 10.0.0.2/24 dev "$iface_client" 2>/dev/null || true
 
     ip netns exec "$NS_CLIENT" ping -q -i 1 10.0.0.1 &>/dev/null &
-    echo $! > "$RUNDIR/ping.pid"
-    ok "client traffic generator running"
+    local ping_pid=$!
+    if kill -0 "$ping_pid" 2>/dev/null; then
+        echo "$ping_pid" > "$RUNDIR/ping.pid"
+        ok "client traffic generator running (PID $ping_pid)"
+    else
+        warn "ping failed to start — client traffic will be absent"
+    fi
 
     # ── Enable monitor mode ────────────────────────────────────────────
 
